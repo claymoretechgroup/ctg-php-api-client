@@ -145,6 +145,12 @@ class CTGAPIClient {
         array  $fields = [],
         string $fieldName = 'file'
     ): array {
+        if (!is_file($filePath)) {
+            throw new CTGAPIClientError('REQUEST_FAILED',
+                "Upload file not found: {$filePath}",
+                ['path' => $filePath]
+            );
+        }
         $fields[$fieldName] = new \CURLFile($filePath);
         return $this->POST($path, $fields);
     }
@@ -177,7 +183,8 @@ class CTGAPIClient {
         }
 
         if (!empty($params)) {
-            $url .= '?' . http_build_query($params);
+            $separator = str_contains($url, '?') ? '&' : '?';
+            $url .= $separator . http_build_query($params);
         }
 
         $isMultipart = self::_hasFile($body);
@@ -187,10 +194,12 @@ class CTGAPIClient {
             $headers['Content-Type'] = 'application/json';
         }
 
-        // Format headers for cURL
+        // Format headers for cURL — strip control characters to prevent CRLF injection
         $formatted = [];
         foreach ($headers as $name => $value) {
-            $formatted[] = "{$name}: {$value}";
+            $cleanName = str_replace(["\r", "\n", "\0"], '', $name);
+            $cleanValue = str_replace(["\r", "\n", "\0"], '', $value);
+            $formatted[] = "{$cleanName}: {$cleanValue}";
         }
 
         $ch = curl_init();
@@ -316,6 +325,9 @@ class CTGAPIClient {
     // :: STRING -> MIXED
     // Parse response body — JSON decode if possible, raw string otherwise
     private static function _parseBody(string $bodyStr): mixed {
+        if ($bodyStr === '') {
+            return '';
+        }
         $decoded = json_decode($bodyStr, true);
         if (json_last_error() === JSON_ERROR_NONE) {
             return $decoded;

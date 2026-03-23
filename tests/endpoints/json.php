@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 // JSON endpoint — returns a fixed JSON payload
 header('Content-Type: application/json');
 

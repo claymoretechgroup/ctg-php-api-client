@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 // Echo endpoint — returns request method, headers, body, params, and files
 header('Content-Type: application/json');
 

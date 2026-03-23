@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 // Auth endpoint — validates Bearer token presence and value
 // Returns 401 if missing, 403 if wrong, 200 if valid
 // The valid token for testing is "test-jwt-token-12345"

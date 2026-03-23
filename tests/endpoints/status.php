@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 // Status endpoint — returns the requested HTTP status code
 // Usage: ?code=404 or ?code=500
 $code = (int)($_GET['code'] ?? 200);
