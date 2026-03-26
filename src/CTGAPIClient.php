@@ -11,6 +11,9 @@ class CTGAPIClient {
     private int $_timeout;
     private array $_headers = [];
     private ?string $_token = null;
+    private ?array $_allowedSchemes = null;
+    private ?array $_allowedHosts = null;
+    private ?int $_maxResponseBytes = null;
 
     // CONSTRUCTOR :: STRING, ARRAY -> $this
     // Creates a client with a base URL and optional config
@@ -20,6 +23,15 @@ class CTGAPIClient {
 
         if (isset($config['headers'])) {
             $this->_headers = $config['headers'];
+        }
+        if (isset($config['allowed_schemes'])) {
+            $this->_allowedSchemes = array_map('strtolower', $config['allowed_schemes']);
+        }
+        if (isset($config['allowed_hosts'])) {
+            $this->_allowedHosts = array_map('strtolower', $config['allowed_hosts']);
+        }
+        if (isset($config['max_response_bytes'])) {
+            $this->_maxResponseBytes = (int)$config['max_response_bytes'];
         }
     }
 
@@ -75,65 +87,60 @@ class CTGAPIClient {
     // :: STRING, ARRAY, ARRAY -> ARRAY
     // GET request with optional query parameters and per-request headers
     public function GET(string $path, array $params = [], array $headers = []): array {
-        return self::request(
+        return $this->_instanceRequest(
             'GET',
             $this->_buildUrl($path),
             [],
             $params,
-            $this->_mergeHeaders($headers),
-            $this->_timeout
+            $this->_mergeHeaders($headers)
         );
     }
 
     // :: STRING, ARRAY, ARRAY, ARRAY -> ARRAY
     // POST request with body, optional query parameters, and per-request headers
     public function POST(string $path, array $body = [], array $params = [], array $headers = []): array {
-        return self::request(
+        return $this->_instanceRequest(
             'POST',
             $this->_buildUrl($path),
             $body,
             $params,
-            $this->_mergeHeaders($headers),
-            $this->_timeout
+            $this->_mergeHeaders($headers)
         );
     }
 
     // :: STRING, ARRAY, ARRAY, ARRAY -> ARRAY
     // PUT request with body, optional query parameters, and per-request headers
     public function PUT(string $path, array $body = [], array $params = [], array $headers = []): array {
-        return self::request(
+        return $this->_instanceRequest(
             'PUT',
             $this->_buildUrl($path),
             $body,
             $params,
-            $this->_mergeHeaders($headers),
-            $this->_timeout
+            $this->_mergeHeaders($headers)
         );
     }
 
     // :: STRING, ARRAY, ARRAY, ARRAY -> ARRAY
     // PATCH request with body, optional query parameters, and per-request headers
     public function PATCH(string $path, array $body = [], array $params = [], array $headers = []): array {
-        return self::request(
+        return $this->_instanceRequest(
             'PATCH',
             $this->_buildUrl($path),
             $body,
             $params,
-            $this->_mergeHeaders($headers),
-            $this->_timeout
+            $this->_mergeHeaders($headers)
         );
     }
 
     // :: STRING, ARRAY, ARRAY -> ARRAY
     // DELETE request with optional query parameters and per-request headers
     public function DELETE(string $path, array $params = [], array $headers = []): array {
-        return self::request(
+        return $this->_instanceRequest(
             'DELETE',
             $this->_buildUrl($path),
             [],
             $params,
-            $this->_mergeHeaders($headers),
-            $this->_timeout
+            $this->_mergeHeaders($headers)
         );
     }
 
@@ -175,7 +182,8 @@ class CTGAPIClient {
         array  $body = [],
         array  $params = [],
         array  $headers = [],
-        int    $timeout = 30
+        int    $timeout = 30,
+        array  $opts = []
     ): array {
         $method = strtoupper(trim($method));
         $allowedMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
@@ -212,7 +220,7 @@ class CTGAPIClient {
         }
 
         $ch = curl_init();
-        curl_setopt_array($ch, [
+        $curlOpts = [
             CURLOPT_URL            => $url,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => false,
@@ -220,7 +228,14 @@ class CTGAPIClient {
             CURLOPT_HEADER         => true,
             CURLOPT_HTTPHEADER     => $formatted,
             CURLOPT_CUSTOMREQUEST  => $method,
-        ]);
+            CURLOPT_PROXY          => '',
+        ];
+
+        if (isset($opts['max_response_bytes'])) {
+            $curlOpts[CURLOPT_MAXFILESIZE] = $opts['max_response_bytes'];
+        }
+
+        curl_setopt_array($ch, $curlOpts);
 
         if (!empty($body) && in_array($method, ['POST', 'PUT', 'PATCH'])) {
             if ($isMultipart) {
@@ -291,12 +306,58 @@ class CTGAPIClient {
         return $this->_baseUrl . '/' . ltrim($path, '/');
     }
 
+    // :: STRING, STRING, ARRAY, ARRAY, ARRAY -> ARRAY
+    // Instance-level request with SSRF check and max_response_bytes
+    private function _instanceRequest(
+        string $method,
+        string $url,
+        array  $body = [],
+        array  $params = [],
+        array  $headers = []
+    ): array {
+        $this->_checkSsrf($url);
+
+        $opts = [];
+        if ($this->_maxResponseBytes !== null) {
+            $opts['max_response_bytes'] = $this->_maxResponseBytes;
+        }
+
+        return self::request($method, $url, $body, $params, $headers, $this->_timeout, $opts);
+    }
+
+    // :: STRING -> VOID
+    // Check URL against SSRF allowlists
+    private function _checkSsrf(string $url): void {
+        $parsed = parse_url($url);
+
+        if ($this->_allowedSchemes !== null) {
+            $scheme = strtolower($parsed['scheme'] ?? '');
+            if (!in_array($scheme, $this->_allowedSchemes, true)) {
+                throw new CTGAPIClientError('INVALID_URL',
+                    "Disallowed URL scheme: {$scheme}",
+                    ['url' => $url, 'scheme' => $scheme, 'allowed' => $this->_allowedSchemes]
+                );
+            }
+        }
+
+        if ($this->_allowedHosts !== null) {
+            $host = strtolower($parsed['host'] ?? '');
+            if (!in_array($host, $this->_allowedHosts, true)) {
+                throw new CTGAPIClientError('INVALID_URL',
+                    "Disallowed host: {$host}",
+                    ['url' => $url, 'host' => $host, 'allowed' => $this->_allowedHosts]
+                );
+            }
+        }
+    }
+
     // :: ARRAY -> ARRAY<STRING, STRING>
     // Merge automatic + default + per-request headers
     private function _mergeHeaders(array $perRequest = []): array {
         $headers = [];
 
         // Automatic headers
+        $headers['User-Agent'] = 'CTGAPIClient/1.0';
         if ($this->_token !== null) {
             $headers['Authorization'] = "Bearer {$this->_token}";
         }
