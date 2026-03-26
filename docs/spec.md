@@ -196,16 +196,34 @@ $api = CTGAPIClient::init('https://api.example.com');
 
 // With options
 $api = CTGAPIClient::init('https://api.example.com', [
-    'timeout' => 30,              // request timeout in seconds (default: 30)
-    'headers' => [                // default headers for all requests
+    'timeout'            => 30,              // total request timeout in seconds (default: 30)
+    'headers'            => [                // default headers for all requests
         'Accept-Language' => 'en',
     ],
+    'allowed_schemes'    => ['https'],                              // optional SSRF allowlist
+    'allowed_hosts'      => ['api.example.com', 'api.partner.com'], // optional SSRF allowlist
+    'max_response_bytes' => 10485760,                               // optional response size limit (bytes)
 ]);
 
 // With JWT from the start
 $api = CTGAPIClient::init('https://api.example.com')
     ->setToken($jwt);
 ```
+
+### Timeout Semantics
+
+The `timeout` configuration is a **total request timeout** — the
+maximum wall-clock time from the start of the request to the receipt
+of the complete response. It includes connection time, TLS handshake,
+sending the request body, and receiving the response. In PHP/cURL,
+this maps to `CURLOPT_TIMEOUT`.
+
+Default: 30 seconds.
+
+Implementations that expose separate connect/read timeouts internally
+should map the single `timeout` value to the total timeout. Separate
+connect and read timeouts may be added as optional config extensions
+but are not required.
 
 The base URL is stored and prepended to every request path. Trailing
 slashes on the base URL and leading slashes on paths are normalized
@@ -376,7 +394,8 @@ $result = $api->upload('/avatars', '/tmp/photo.jpg', [], 'avatar');
 
 ### Implementation
 
-`upload()` delegates to `POST()` with a `CURLFile` in the body:
+`upload()` checks that the file exists before constructing the
+`CURLFile`, then delegates to `POST()`:
 
 ```php
 public function upload(
@@ -385,6 +404,12 @@ public function upload(
     array  $fields = [],
     string $fieldName = 'file'
 ): array {
+    if (!file_exists($filePath)) {
+        throw new CTGAPIClientError('REQUEST_FAILED',
+            "Upload file not found: {$filePath}",
+            ['file_path' => $filePath]
+        );
+    }
     $fields[$fieldName] = new \CURLFile($filePath);
     return $this->POST($path, $fields);
 }
@@ -448,9 +473,26 @@ headers from leaking to unintended hosts on cross-origin redirects.
 Callers who need to follow redirects should inspect the `Location`
 header and issue a subsequent request.
 
+If redirect following is ever added as an extension, it MUST:
+
+- Default to off
+- Strip `Authorization` and `Cookie` headers on cross-origin redirects
+- Cap redirect depth at 5 maximum
+
 ---
 
 ## Security Considerations
+
+### TLS Certificate Verification
+
+TLS certificate verification and hostname validation MUST be enabled
+by default. In PHP/cURL, this means `CURLOPT_SSL_VERIFYPEER` and
+`CURLOPT_SSL_VERIFYHOST` are set to their default secure values and
+are not disabled by the library. Disabling certificate verification
+(e.g., for self-signed certs in development) may be supported as an
+opt-in config option but must never be the default. Connections to
+`https` URLs with invalid, expired, or mismatched certificates throw
+`SSL_ERROR`.
 
 ### Header Validation
 
@@ -458,34 +500,83 @@ Header names are validated against RFC 7230 token characters before
 being sent. Invalid header names throw `INVALID_HEADER`. Header values
 are stripped of `\r`, `\n`, and `\0` to prevent CRLF injection.
 
+### User-Agent
+
+The library sets a default `User-Agent` header (e.g.,
+`CTGAPIClient/1.0`) on all requests. This enables server-side
+traceability and abuse controls. The caller can override the
+User-Agent via `setHeader()` or per-request headers.
+
+### Proxy Behavior
+
+The library SHOULD NOT honor system/environment proxy settings
+(`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`) by default. In PHP/cURL,
+this means setting `CURLOPT_PROXY` to an empty string to explicitly
+override environment variables. Unintended proxy usage is a data
+exfiltration path — proxy configuration should be deliberate. Proxy
+support may be added as an explicit config option.
+
 ### SSRF (Server-Side Request Forgery)
 
-The static `request()` method accepts arbitrary URLs. If the URL
-originates from user input or external data, callers should validate
-it before passing to the client:
+The static `request()` method accepts arbitrary URLs. The library
+SHOULD support optional `allowed_hosts` and `allowed_schemes` config
+on the client instance:
 
-- Restrict allowed schemes (e.g., `https` only)
-- Restrict allowed hosts (allowlist of trusted API domains)
+```php
+$api = CTGAPIClient::init('https://api.example.com', [
+    'allowed_schemes' => ['https'],
+    'allowed_hosts'   => ['api.example.com', 'api.partner.com'],
+]);
+```
+
+When configured, requests to disallowed schemes or hosts throw
+`INVALID_URL`. When not configured, no restriction is applied.
+Instance methods check against the allowlist before delegating to
+`request()`.
+
+Additional caller-side guidance for SSRF prevention:
+
 - Block internal/link-local IP ranges (e.g., `10.x`, `172.16.x`,
   `192.168.x`, `127.x`, `169.254.x`, `::1`, `fd00::`/8)
-
-The library does not enforce these restrictions — they are
-deployment-specific policy decisions.
+- Normalize internationalized domain names (IDN) to punycode before
+  checking against allowlists to prevent homograph attacks (e.g.,
+  `аpi.example.com` using Cyrillic "а" vs `api.example.com`)
 
 ### Response Size
 
-The client reads full responses into memory. When calling untrusted
-endpoints, callers should consider setting a low `timeout` to limit
-exposure, or wrapping calls with memory monitoring. A future version
-may add a `max_response_size` config option using
-`CURLOPT_MAXFILESIZE`.
+The client supports an optional `max_response_bytes` config key that
+limits the response body size. In PHP/cURL, this maps to
+`CURLOPT_MAXFILESIZE`:
 
-### Error Data Redaction
+```php
+$api = CTGAPIClient::init('https://api.example.com', [
+    'max_response_bytes' => 10485760,  // 10 MB
+]);
+```
 
-Error objects carry request context in `$data` (URL, method, headers).
-If errors are logged, callers should redact sensitive fields
-(Authorization headers, tokens, credentials in URLs) before
-persisting. The library does not perform automatic redaction.
+When configured, responses exceeding the limit throw
+`REQUEST_FAILED`. When not configured, no limit is applied — the
+full response is read into memory. This is strongly recommended for
+any deployment that calls untrusted endpoints.
+
+### Error Data and Redaction
+
+Transport error objects carry request context in `$data`. The included
+fields are `url`, `method`, and the cURL error code (`curl_errno`).
+Authorization and Cookie headers are NOT included in error data by
+default — this prevents leaking sensitive tokens in logs.
+
+When logging or transmitting errors, implementations and callers
+MUST redact:
+
+- `Authorization` header values
+- Bearer tokens
+- Credentials embedded in URLs (e.g., `https://user:pass@host/`)
+- `Cookie` header values
+- Sensitive fields in request/response body snippets
+
+Implementations may optionally include headers in error data as an
+extension, but should consider the redaction implications.
 
 ---
 
@@ -553,6 +644,10 @@ class CTGAPIClientError extends \Exception
 | Request body fails JSON encoding | `INVALID_BODY` |
 | Nested CURLFile in body | `INVALID_BODY` |
 | Invalid header name (non-RFC 7230) | `INVALID_HEADER` |
+| Disallowed scheme (when `allowed_schemes` configured) | `INVALID_URL` |
+| Disallowed host (when `allowed_hosts` configured) | `INVALID_URL` |
+| Response exceeds `max_response_bytes` limit | `REQUEST_FAILED` |
+| Upload file path does not exist | `REQUEST_FAILED` |
 
 ### Response Body Parsing
 
@@ -636,8 +731,9 @@ $api->removeHeader('Accept-Language');
 When a request is made, headers are merged in this order (later
 entries override earlier ones with the same name):
 
-1. **Automatic headers** — `Content-Type: application/json` for JSON
-   bodies, `Authorization: Bearer <token>` when a token is set
+1. **Automatic headers** — `User-Agent: CTGAPIClient/1.0`,
+   `Content-Type: application/json` for JSON bodies,
+   `Authorization: Bearer <token>` when a token is set
 2. **Default headers** — set via `setHeader()` / `setHeaders()`
 3. **Per-request headers** — passed as the last argument to `GET()`,
    `POST()`, etc.
@@ -730,10 +826,13 @@ public static function request(
 ```php
 CURLOPT_RETURNTRANSFER => true
 CURLOPT_FOLLOWLOCATION => false
-CURLOPT_TIMEOUT        => $timeout
+CURLOPT_TIMEOUT        => $timeout      // total wall-clock timeout
 CURLOPT_HEADER         => true
 CURLOPT_HTTPHEADER     => [...]
 CURLOPT_CUSTOMREQUEST  => $method
+CURLOPT_PROXY          => ''            // do not honor env proxy settings
+// CURLOPT_SSL_VERIFYPEER and CURLOPT_SSL_VERIFYHOST left at secure defaults
+// CURLOPT_MAXFILESIZE  => $maxResponseBytes (when configured)
 ```
 
 **Query parameters** are appended to the URL:
