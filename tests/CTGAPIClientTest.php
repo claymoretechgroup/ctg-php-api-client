@@ -114,6 +114,32 @@ CTGTest::init('static request — malformed URL throws INVALID_URL')
     ->assert('throws INVALID_URL', fn($r) => $r, 'INVALID_URL')
     ->start(null, $config);
 
+CTGTest::init('static request — invalid body throws INVALID_BODY')
+    ->stage('attempt', function($_) use ($endpointBase) {
+        try {
+            // Invalid UTF-8 sequence causes json_encode to fail
+            CTGAPIClient::request('POST', "http://localhost{$endpointBase}/echo.php",
+                ['data' => "\xB1\x31"]);
+            return 'no exception';
+        } catch (CTGAPIClientError $e) {
+            return $e->type;
+        }
+    })
+    ->assert('throws INVALID_BODY', fn($r) => $r, 'INVALID_BODY')
+    ->start(null, $config);
+
+CTGTest::init('static request — lowercase content-type not duplicated')
+    ->stage('execute', fn($_) => CTGAPIClient::request(
+        'POST', "http://localhost{$endpointBase}/echo.php",
+        ['key' => 'value'], [], ['content-type' => 'text/plain']
+    ))
+    ->assert('request succeeded', fn($r) => $r['status'], 200)
+    ->assert('sent content-type text/plain', fn($r) => str_contains(
+        $r['body']['headers']['content-type'] ?? $r['body']['headers']['Content-Type'] ?? '',
+        'text/plain'
+    ), true)
+    ->start(null, $config);
+
 CTGTest::init('static request — custom timeout')
     ->stage('execute', fn($_) => CTGAPIClient::request(
         'GET', "http://localhost{$endpointBase}/echo.php",

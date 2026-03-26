@@ -30,6 +30,7 @@ and accessible via `getCode()` and `getMessage()`.
 | 2000 | REQUEST_FAILED | cURL error (other) |
 | 3000 | INVALID_URL | Malformed URL (cURL error 3) |
 | 3001 | INVALID_METHOD | Invalid HTTP method (not in allowlist: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) |
+| 3002 | INVALID_BODY | Request body failed JSON encoding (invalid UTF-8, unsupported types) |
 | 4000 | HTTP_ERROR | Caller-initiated — HTTP response with non-2xx status |
 
 ---

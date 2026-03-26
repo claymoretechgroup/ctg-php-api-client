@@ -433,12 +433,20 @@ Every request returns the same shape:
 |-----|------|-------------|
 | `status` | INT | HTTP status code |
 | `ok` | BOOL | `true` if status is 200-299 |
-| `headers` | ARRAY<STRING, STRING> | Response headers (lowercase keys) |
+| `headers` | ARRAY<STRING, STRING\|ARRAY> | Response headers (lowercase keys). Duplicate headers are comma-joined per RFC 7230. Set-Cookie is collected as an array. |
 | `body` | MIXED | Parsed JSON body, or raw string if not JSON |
 
 The `ok` flag is a convenience — the client does not throw on HTTP
 error codes. A 404 response has `ok => false` and `status => 404`
 with the response body available for inspection.
+
+### Redirect Policy
+
+The client does **not** follow redirects. HTTP 3xx responses are
+returned to the caller with `ok => false`. This prevents authorization
+headers from leaking to unintended hosts on cross-origin redirects.
+Callers who need to follow redirects should inspect the `Location`
+header and issue a subsequent request.
 
 ---
 
@@ -463,6 +471,7 @@ class CTGAPIClientError extends \Exception
         'REQUEST_FAILED'     => 2000,
         'INVALID_URL'        => 3000,
         'INVALID_METHOD'     => 3001,
+        'INVALID_BODY'       => 3002,
         'HTTP_ERROR'         => 4000,
     ];
 
@@ -501,6 +510,7 @@ class CTGAPIClientError extends \Exception
 | cURL error (other) | `REQUEST_FAILED` |
 | Malformed URL (cURL error 3) | `INVALID_URL` |
 | Invalid HTTP method (not in GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) | `INVALID_METHOD` |
+| Request body fails JSON encoding | `INVALID_BODY` |
 
 ### Response Body Parsing
 
@@ -677,8 +687,7 @@ public static function request(
 
 ```php
 CURLOPT_RETURNTRANSFER => true
-CURLOPT_FOLLOWLOCATION => true
-CURLOPT_MAXREDIRS      => 5
+CURLOPT_FOLLOWLOCATION => false
 CURLOPT_TIMEOUT        => $timeout
 CURLOPT_HEADER         => true
 CURLOPT_HTTPHEADER     => [...]

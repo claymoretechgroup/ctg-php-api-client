@@ -194,7 +194,7 @@ class CTGAPIClient {
         $isMultipart = self::_hasFile($body);
 
         // Build Content-Type if not provided and body is present
-        if (!$isMultipart && !empty($body) && !isset($headers['Content-Type'])) {
+        if (!$isMultipart && !empty($body) && !self::_hasHeader($headers, 'Content-Type')) {
             $headers['Content-Type'] = 'application/json';
         }
 
@@ -210,8 +210,7 @@ class CTGAPIClient {
         curl_setopt_array($ch, [
             CURLOPT_URL            => $url,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS      => 5,
+            CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_TIMEOUT        => $timeout,
             CURLOPT_HEADER         => true,
             CURLOPT_HTTPHEADER     => $formatted,
@@ -222,7 +221,15 @@ class CTGAPIClient {
             if ($isMultipart) {
                 curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
             } else {
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+                $encoded = json_encode($body);
+                if ($encoded === false) {
+                    curl_close($ch);
+                    throw new CTGAPIClientError('INVALID_BODY',
+                        'Failed to encode request body as JSON: ' . json_last_error_msg(),
+                        ['body' => $body, 'json_error' => json_last_error_msg()]
+                    );
+                }
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $encoded);
             }
         }
 
@@ -302,6 +309,18 @@ class CTGAPIClient {
         return $headers;
     }
 
+    // :: ARRAY, STRING -> BOOL
+    // Case-insensitive check for a header key in an associative array
+    private static function _hasHeader(array $headers, string $name): bool {
+        $lower = strtolower($name);
+        foreach ($headers as $key => $value) {
+            if (strtolower($key) === $lower) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // :: ARRAY -> BOOL
     // Check if body contains any CURLFile instances
     private static function _hasFile(array $body): bool {
@@ -313,15 +332,29 @@ class CTGAPIClient {
         return false;
     }
 
-    // :: STRING -> ARRAY<STRING, STRING>
-    // Parse raw header string into associative array with lowercase keys
+    // :: STRING -> ARRAY<STRING, STRING|ARRAY>
+    // Parse raw header string into associative array with lowercase keys.
+    // Duplicate headers are comma-joined per RFC 7230, except Set-Cookie
+    // which is collected as an array (Set-Cookie values can contain commas).
     private static function _parseHeaders(string $headerStr): array {
         $headers = [];
         $lines = explode("\r\n", $headerStr);
         foreach ($lines as $line) {
             if (str_contains($line, ':')) {
                 [$name, $value] = explode(':', $line, 2);
-                $headers[strtolower(trim($name))] = trim($value);
+                $key = strtolower(trim($name));
+                $val = trim($value);
+
+                if (!isset($headers[$key])) {
+                    $headers[$key] = $val;
+                } elseif ($key === 'set-cookie') {
+                    if (!is_array($headers[$key])) {
+                        $headers[$key] = [$headers[$key]];
+                    }
+                    $headers[$key][] = $val;
+                } else {
+                    $headers[$key] .= ', ' . $val;
+                }
             }
         }
         return $headers;

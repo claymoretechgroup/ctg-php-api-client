@@ -18,6 +18,7 @@ class CTGAPIClientError extends \Exception {
         // 3xxx — Validation
         'INVALID_URL'        => 3000,
         'INVALID_METHOD'     => 3001,
+        'INVALID_BODY'       => 3002,
         // 4xxx — HTTP (caller-initiated)
         'HTTP_ERROR'         => 4000,
     ];
