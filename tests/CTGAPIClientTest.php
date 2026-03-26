@@ -128,6 +128,19 @@ CTGTest::init('static request — invalid body throws INVALID_BODY')
     ->assert('throws INVALID_BODY', fn($r) => $r, 'INVALID_BODY')
     ->start(null, $config);
 
+CTGTest::init('static request — nested CURLFile throws INVALID_BODY')
+    ->stage('attempt', function($_) use ($endpointBase) {
+        try {
+            CTGAPIClient::request('POST', "http://localhost{$endpointBase}/echo.php",
+                ['meta' => ['file' => new \CURLFile('/dev/null')]]);
+            return 'no exception';
+        } catch (CTGAPIClientError $e) {
+            return $e->type;
+        }
+    })
+    ->assert('throws INVALID_BODY', fn($r) => $r, 'INVALID_BODY')
+    ->start(null, $config);
+
 CTGTest::init('static request — lowercase content-type not duplicated')
     ->stage('execute', fn($_) => CTGAPIClient::request(
         'POST', "http://localhost{$endpointBase}/echo.php",

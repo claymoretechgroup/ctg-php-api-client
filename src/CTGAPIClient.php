@@ -322,14 +322,35 @@ class CTGAPIClient {
     }
 
     // :: ARRAY -> BOOL
-    // Check if body contains any CURLFile instances
+    // Check if body contains any CURLFile instances at top level.
+    // Also rejects nested CURLFile since cURL cannot process them.
     private static function _hasFile(array $body): bool {
+        $hasTopLevel = false;
         foreach ($body as $value) {
             if ($value instanceof \CURLFile) {
-                return true;
+                $hasTopLevel = true;
+            } elseif (is_array($value)) {
+                self::_rejectNestedFile($value);
             }
         }
-        return false;
+        return $hasTopLevel;
+    }
+
+    // :: ARRAY -> VOID
+    // Throws if a CURLFile is found nested inside an array.
+    // cURL only processes top-level values for multipart uploads.
+    private static function _rejectNestedFile(array $data): void {
+        foreach ($data as $value) {
+            if ($value instanceof \CURLFile) {
+                throw new CTGAPIClientError('INVALID_BODY',
+                    'CURLFile must be a top-level body value. Nested files are not supported by cURL multipart.',
+                    ['value' => $value]
+                );
+            }
+            if (is_array($value)) {
+                self::_rejectNestedFile($value);
+            }
+        }
     }
 
     // :: STRING -> ARRAY<STRING, STRING|ARRAY>
