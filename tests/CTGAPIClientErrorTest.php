@@ -38,6 +38,18 @@ CTGTest::init('construct with unknown type throws')
     ->assert('throws', fn($r) => $r, 'threw')
     ->start(null, $config);
 
+CTGTest::init('construction — unknown integer code throws')
+    ->stage('attempt', function($_) {
+        try {
+            new CTGAPIClientError(99999);
+            return 'no exception';
+        } catch (\InvalidArgumentException $e) {
+            return 'threw';
+        }
+    })
+    ->assert('throws InvalidArgumentException', fn($r) => $r, 'threw')
+    ->start(null, $config);
+
 // ── Lookup ──────────────────────────────────────────────────────
 
 CTGTest::init('lookup — name to code')
@@ -48,6 +60,16 @@ CTGTest::init('lookup — name to code')
 CTGTest::init('lookup — code to name')
     ->stage('execute', fn($_) => CTGAPIClientError::lookup(1001))
     ->assert('returns TIMEOUT', fn($r) => $r, 'TIMEOUT')
+    ->start(null, $config);
+
+CTGTest::init('lookup — unknown string returns null')
+    ->stage('execute', fn($_) => CTGAPIClientError::lookup('NONEXISTENT'))
+    ->assert('returns null', fn($r) => $r, null)
+    ->start(null, $config);
+
+CTGTest::init('lookup — unknown integer returns null')
+    ->stage('execute', fn($_) => CTGAPIClientError::lookup(99999))
+    ->assert('returns null', fn($r) => $r, null)
     ->start(null, $config);
 
 CTGTest::init('lookup — all codes')
@@ -85,6 +107,16 @@ CTGTest::init('on — matches type name')
         return $matched;
     })
     ->assert('handler called', fn($r) => $r, 'TIMEOUT')
+    ->start(null, $config);
+
+CTGTest::init('on — matches by integer code')
+    ->stage('execute', function($_) {
+        $e = new CTGAPIClientError('TIMEOUT', 'timed out');
+        $matched = null;
+        $e->on(1001, function($err) use (&$matched) { $matched = $err->type; });
+        return $matched;
+    })
+    ->assert('handler called via integer code', fn($r) => $r, 'TIMEOUT')
     ->start(null, $config);
 
 CTGTest::init('on — short circuits')

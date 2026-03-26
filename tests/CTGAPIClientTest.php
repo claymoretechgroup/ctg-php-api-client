@@ -661,6 +661,295 @@ CTGTest::init('HTTP_ERROR — full response in data')
     ->start(null, $config);
 
 // ═══════════════════════════════════════════════════════════════
+// METHOD VALIDATION
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('static request — HEAD is valid method')
+    ->stage('execute', fn($_) => CTGAPIClient::request(
+        'HEAD', "http://localhost{$endpointBase}/echo.php"
+    ))
+    ->assert('status is 200', fn($r) => $r['status'], 200)
+    ->start(null, $config);
+
+CTGTest::init('static request — OPTIONS is valid method')
+    ->stage('execute', fn($_) => CTGAPIClient::request(
+        'OPTIONS', "http://localhost{$endpointBase}/echo.php"
+    ))
+    ->assert('status is 200', fn($r) => $r['status'], 200)
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// HEADER VALIDATION
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('static request — CRLF stripped from header values')
+    ->stage('execute', fn($_) => CTGAPIClient::request(
+        'GET', "http://localhost{$endpointBase}/echo.php",
+        [], [], ['X-Test-Header' => "safe\r\nX-Injected: evil"]
+    ))
+    ->assert('echoed value has no CRLF', fn($r) =>
+        str_contains($r['body']['headers']['X-Test-Header'] ?? '', "\r\n"), false)
+    ->assert('no injected header', fn($r) =>
+        isset($r['body']['headers']['X-Injected']), false)
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// CONTENT-TYPE
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('static request — multipart body skips Content-Type auto-set')
+    ->stage('setup', function($_) {
+        $tmp = tempnam('/tmp', 'ctg_test_');
+        file_put_contents($tmp, 'multipart test content');
+        return $tmp;
+    })
+    ->stage('execute', fn($tmp) => [
+        'tmp' => $tmp,
+        'result' => CTGAPIClient::request(
+            'POST', "http://localhost{$endpointBase}/upload.php",
+            ['file' => new \CURLFile($tmp)]
+        ),
+    ])
+    ->assert('content-type is multipart', fn($r) => str_contains(
+        $r['result']['body']['content_type'] ?? ($r['result']['headers']['content-type'] ?? ''),
+        'multipart/form-data'
+    ) || !str_contains(
+        $r['result']['headers']['content-type'] ?? '',
+        'application/json'
+    ), true)
+    ->stage('cleanup', fn($r) => unlink($r['tmp']))
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// UPLOAD ERRORS
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('upload — missing file throws REQUEST_FAILED')
+    ->stage('attempt', function($_) use ($baseUrl, $endpointBase) {
+        try {
+            CTGAPIClient::init($baseUrl)
+                ->upload("{$endpointBase}/upload.php", '/nonexistent/file.txt');
+            return 'no exception';
+        } catch (CTGAPIClientError $e) {
+            return $e->type;
+        }
+    })
+    ->assert('throws REQUEST_FAILED', fn($r) => $r, 'REQUEST_FAILED')
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// HEADER MERGE PRIORITY
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('headers — default Authorization overrides automatic token')
+    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+        ->setToken('my-jwt-token')
+        ->setHeader('Authorization', 'Basic xyz')
+        ->GET("{$endpointBase}/echo.php"))
+    ->assert('uses Basic not Bearer', fn($r) =>
+        $r['body']['headers']['Authorization'] ?? null, 'Basic xyz')
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// RESPONSE STATUS — 3xx
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('response — 3xx returns ok false')
+    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+        ->GET("{$endpointBase}/status.php", ['code' => 301]))
+    ->assert('ok is false', fn($r) => $r['ok'], false)
+    ->assert('status is 301', fn($r) => $r['status'], 301)
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// RESPONSE BODY PARSING
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('response — non-JSON body returns raw string')
+    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+        ->GET("{$endpointBase}/redirect.php"))
+    ->assert('body is string', fn($r) => is_string($r['body']), true)
+    ->assert('body is raw text', fn($r) => $r['body'], 'redirecting')
+    ->start(null, $config);
+
+CTGTest::init('response — empty body returns empty string')
+    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+        ->GET("{$endpointBase}/status.php", ['code' => 204]))
+    ->assert('body is empty string', fn($r) => $r['body'], '')
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// RESPONSE HEADER PARSING
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('response — duplicate headers comma-joined')
+    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+        ->GET("{$endpointBase}/headers.php"))
+    ->assert('x-duplicate is comma-joined', fn($r) =>
+        $r['headers']['x-duplicate'] ?? null, 'value1, value2')
+    ->start(null, $config);
+
+CTGTest::init('response — set-cookie collected as array')
+    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+        ->GET("{$endpointBase}/headers.php"))
+    ->assert('set-cookie is array', fn($r) => is_array($r['headers']['set-cookie'] ?? null), true)
+    ->assert('has two cookies', fn($r) => count($r['headers']['set-cookie'] ?? []), 2)
+    ->assert('first cookie', fn($r) => $r['headers']['set-cookie'][0] ?? null, 'session=abc; Path=/')
+    ->assert('second cookie', fn($r) => $r['headers']['set-cookie'][1] ?? null, 'theme=dark; Path=/')
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// REDIRECT POLICY
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('response — 3xx not followed, Location header present')
+    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+        ->GET("{$endpointBase}/redirect.php"))
+    ->assert('status is 302', fn($r) => $r['status'], 302)
+    ->assert('ok is false', fn($r) => $r['ok'], false)
+    ->assert('location header present', fn($r) =>
+        isset($r['headers']['location']), true)
+    ->assert('location points to echo', fn($r) =>
+        $r['headers']['location'] ?? null, '/tests/endpoints/echo.php')
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// TRANSPORT ERROR DATA
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('transport error — data contains url and method')
+    ->stage('attempt', function($_) {
+        try {
+            CTGAPIClient::init('http://localhost:19999')->GET('/nonexistent');
+            return null;
+        } catch (CTGAPIClientError $e) {
+            return $e->data;
+        }
+    })
+    ->assert('data has url', fn($r) => isset($r['url']), true)
+    ->assert('data has method', fn($r) => isset($r['method']), true)
+    ->assert('data has curl_errno', fn($r) => isset($r['curl_errno']), true)
+    ->assert('method is GET', fn($r) => $r['method'], 'GET')
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// ERROR DATA SAFETY
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('transport error — data does not contain auth headers')
+    ->stage('attempt', function($_) use ($baseUrl) {
+        try {
+            CTGAPIClient::init('http://localhost:19999')
+                ->setToken('secret-token-12345')
+                ->GET('/nonexistent');
+            return null;
+        } catch (CTGAPIClientError $e) {
+            return $e->data;
+        }
+    })
+    ->assert('no authorization key', fn($r) => isset($r['authorization']), false)
+    ->assert('no headers key', fn($r) => isset($r['headers']), false)
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// USER-AGENT DEFAULT
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('request — default User-Agent header sent')
+    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+        ->GET("{$endpointBase}/echo.php"))
+    ->assert('User-Agent contains CTGAPIClient', fn($r) => str_contains(
+        $r['body']['headers']['User-Agent'] ?? '', 'CTGAPIClient'), true)
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// PROXY BEHAVIOR
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('request — env proxy not honored')
+    ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
+        $oldProxy = getenv('HTTP_PROXY');
+        putenv('HTTP_PROXY=http://invalid-proxy:9999');
+        try {
+            $result = CTGAPIClient::init($baseUrl)
+                ->GET("{$endpointBase}/echo.php");
+        } finally {
+            if ($oldProxy === false) {
+                putenv('HTTP_PROXY');
+            } else {
+                putenv("HTTP_PROXY={$oldProxy}");
+            }
+        }
+        return $result;
+    })
+    ->assert('request succeeded despite invalid proxy env', fn($r) => $r['status'], 200)
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// SSRF ALLOWLIST
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('ssrf — disallowed host throws INVALID_URL')
+    ->stage('attempt', function($_) use ($baseUrl, $endpointBase) {
+        try {
+            CTGAPIClient::init($baseUrl, [
+                'allowed_hosts' => ['api.example.com'],
+            ])->GET("{$endpointBase}/echo.php");
+            return 'no exception';
+        } catch (CTGAPIClientError $e) {
+            return $e->type;
+        }
+    })
+    ->assert('throws INVALID_URL', fn($r) => $r, 'INVALID_URL')
+    ->start(null, $config);
+
+CTGTest::init('ssrf — disallowed scheme throws INVALID_URL')
+    ->stage('attempt', function($_) use ($endpointBase) {
+        try {
+            CTGAPIClient::init('http://localhost', [
+                'allowed_schemes' => ['https'],
+            ])->GET("{$endpointBase}/echo.php");
+            return 'no exception';
+        } catch (CTGAPIClientError $e) {
+            return $e->type;
+        }
+    })
+    ->assert('throws INVALID_URL', fn($r) => $r, 'INVALID_URL')
+    ->start(null, $config);
+
+CTGTest::init('ssrf — allowed host succeeds')
+    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl, [
+        'allowed_hosts' => ['localhost'],
+    ])->GET("{$endpointBase}/echo.php"))
+    ->assert('request succeeded', fn($r) => $r['status'], 200)
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
+// MAX RESPONSE BYTES
+// ═══════════════════════════════════════════════════════════════
+
+CTGTest::init('response size — exceeds limit throws REQUEST_FAILED')
+    ->stage('attempt', function($_) use ($baseUrl, $endpointBase) {
+        try {
+            CTGAPIClient::init($baseUrl, [
+                'max_response_bytes' => 1,
+            ])->GET("{$endpointBase}/echo.php");
+            return 'no exception';
+        } catch (CTGAPIClientError $e) {
+            return $e->type;
+        }
+    })
+    ->assert('throws REQUEST_FAILED', fn($r) => $r, 'REQUEST_FAILED')
+    ->start(null, $config);
+
+CTGTest::init('response size — under limit succeeds')
+    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl, [
+        'max_response_bytes' => 1048576,
+    ])->GET("{$endpointBase}/echo.php"))
+    ->assert('request succeeded', fn($r) => $r['status'], 200)
+    ->start(null, $config);
+
+// ═══════════════════════════════════════════════════════════════
 // CTGFnprog INTEGRATION
 // ═══════════════════════════════════════════════════════════════
 
