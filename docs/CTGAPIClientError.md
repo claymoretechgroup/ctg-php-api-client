@@ -28,9 +28,8 @@ and accessible via `getCode()` and `getMessage()`.
 | 1002 | DNS_FAILED | DNS resolution failed |
 | 1003 | SSL_ERROR | SSL certificate or handshake error |
 | 2000 | REQUEST_FAILED | cURL error (other) |
-| 2001 | INVALID_JSON | Response body is not valid JSON (when expected) |
-| 3000 | INVALID_URL | Malformed URL |
-| 3001 | INVALID_METHOD | Empty or invalid HTTP method |
+| 3000 | INVALID_URL | Malformed URL (cURL error 3) |
+| 3001 | INVALID_METHOD | Invalid HTTP method (not in allowlist: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) |
 | 4000 | HTTP_ERROR | Caller-initiated — HTTP response with non-2xx status |
 
 ---

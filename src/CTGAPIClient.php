@@ -178,8 +178,12 @@ class CTGAPIClient {
         int    $timeout = 30
     ): array {
         $method = strtoupper(trim($method));
-        if (empty($method)) {
-            throw new CTGAPIClientError('INVALID_METHOD', 'HTTP method cannot be empty');
+        $allowedMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+        if (!in_array($method, $allowedMethods, true)) {
+            throw new CTGAPIClientError('INVALID_METHOD',
+                "Invalid HTTP method: {$method}. Allowed: " . implode(', ', $allowedMethods),
+                ['method' => $method]
+            );
         }
 
         if (!empty($params)) {
@@ -234,6 +238,7 @@ class CTGAPIClient {
                 CURLE_OPERATION_TIMEDOUT => 'TIMEOUT',
                 CURLE_COULDNT_RESOLVE_HOST => 'DNS_FAILED',
                 CURLE_SSL_CONNECT_ERROR, CURLE_SSL_CERTPROBLEM => 'SSL_ERROR',
+                CURLE_URL_MALFORMAT      => 'INVALID_URL',
                 default                  => 'REQUEST_FAILED',
             };
 

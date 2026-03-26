@@ -15,7 +15,6 @@ class CTGAPIClientError extends \Exception {
         'SSL_ERROR'          => 1003,
         // 2xxx — Request/Response
         'REQUEST_FAILED'     => 2000,
-        'INVALID_JSON'       => 2001,
         // 3xxx — Validation
         'INVALID_URL'        => 3000,
         'INVALID_METHOD'     => 3001,
@@ -60,7 +59,15 @@ class CTGAPIClientError extends \Exception {
     // :: STRING|INT, (ctgapiClientError -> VOID) -> $this
     // Handle error if it matches the given type. Chainable. Short-circuits after first match.
     public function on(string|int $type, callable $handler): static {
-        $code = is_string($type) ? (self::TYPES[$type] ?? null) : $type;
+        if (is_string($type)) {
+            $code = self::TYPES[$type]
+                ?? throw new \InvalidArgumentException("Unknown CTGAPIClientError type for on(): {$type}");
+        } else {
+            $code = $type;
+            if (self::lookup($type) === null) {
+                throw new \InvalidArgumentException("Unknown CTGAPIClientError code for on(): {$type}");
+            }
+        }
 
         if (!$this->_handled && $this->getCode() === $code) {
             $handler($this);

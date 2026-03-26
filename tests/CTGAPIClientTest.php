@@ -90,6 +90,30 @@ CTGTest::init('static request — empty method throws')
     ->assert('throws INVALID_METHOD', fn($r) => $r, 'INVALID_METHOD')
     ->start(null, $config);
 
+CTGTest::init('static request — invalid method throws')
+    ->stage('attempt', function($_) {
+        try {
+            CTGAPIClient::request('BOGUS', 'http://localhost/test');
+            return 'no exception';
+        } catch (CTGAPIClientError $e) {
+            return $e->type;
+        }
+    })
+    ->assert('throws INVALID_METHOD', fn($r) => $r, 'INVALID_METHOD')
+    ->start(null, $config);
+
+CTGTest::init('static request — malformed URL throws INVALID_URL')
+    ->stage('attempt', function($_) {
+        try {
+            CTGAPIClient::request('GET', 'http://');
+            return 'no exception';
+        } catch (CTGAPIClientError $e) {
+            return $e->type;
+        }
+    })
+    ->assert('throws INVALID_URL', fn($r) => $r, 'INVALID_URL')
+    ->start(null, $config);
+
 CTGTest::init('static request — custom timeout')
     ->stage('execute', fn($_) => CTGAPIClient::request(
         'GET', "http://localhost{$endpointBase}/echo.php",

@@ -57,7 +57,6 @@ CTGTest::init('lookup — all codes')
         CTGAPIClientError::lookup('DNS_FAILED'),
         CTGAPIClientError::lookup('SSL_ERROR'),
         CTGAPIClientError::lookup('REQUEST_FAILED'),
-        CTGAPIClientError::lookup('INVALID_JSON'),
         CTGAPIClientError::lookup('INVALID_URL'),
         CTGAPIClientError::lookup('INVALID_METHOD'),
         CTGAPIClientError::lookup('HTTP_ERROR'),
@@ -67,10 +66,9 @@ CTGTest::init('lookup — all codes')
     ->assert('DNS_FAILED', fn($r) => $r[2], 1002)
     ->assert('SSL_ERROR', fn($r) => $r[3], 1003)
     ->assert('REQUEST_FAILED', fn($r) => $r[4], 2000)
-    ->assert('INVALID_JSON', fn($r) => $r[5], 2001)
-    ->assert('INVALID_URL', fn($r) => $r[6], 3000)
-    ->assert('INVALID_METHOD', fn($r) => $r[7], 3001)
-    ->assert('HTTP_ERROR', fn($r) => $r[8], 4000)
+    ->assert('INVALID_URL', fn($r) => $r[5], 3000)
+    ->assert('INVALID_METHOD', fn($r) => $r[6], 3001)
+    ->assert('HTTP_ERROR', fn($r) => $r[7], 4000)
     ->start(null, $config);
 
 // ── Chainable on()/otherwise() ──────────────────────────────────
@@ -105,6 +103,34 @@ CTGTest::init('otherwise — called when no match')
         return $matched;
     })
     ->assert('otherwise called', fn($r) => $r, 'otherwise')
+    ->start(null, $config);
+
+// ── on() — unknown type throws ──────────────────────────────────
+
+CTGTest::init('on — unknown string type throws InvalidArgumentException')
+    ->stage('execute', function($_) {
+        $e = new CTGAPIClientError('TIMEOUT', 'timed out');
+        try {
+            $e->on('NONEXISTENT_TYPE', fn($err) => null);
+            return 'no exception';
+        } catch (\InvalidArgumentException $ex) {
+            return 'thrown';
+        }
+    })
+    ->assert('throws', fn($r) => $r, 'thrown')
+    ->start(null, $config);
+
+CTGTest::init('on — unknown integer code throws InvalidArgumentException')
+    ->stage('execute', function($_) {
+        $e = new CTGAPIClientError('TIMEOUT', 'timed out');
+        try {
+            $e->on(99999, fn($err) => null);
+            return 'no exception';
+        } catch (\InvalidArgumentException $ex) {
+            return 'thrown';
+        }
+    })
+    ->assert('throws', fn($r) => $r, 'thrown')
     ->start(null, $config);
 
 // ── HTTP_ERROR type ─────────────────────────────────────────────

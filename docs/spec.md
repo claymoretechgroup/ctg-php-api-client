@@ -461,7 +461,6 @@ class CTGAPIClientError extends \Exception
         'DNS_FAILED'         => 1002,
         'SSL_ERROR'          => 1003,
         'REQUEST_FAILED'     => 2000,
-        'INVALID_JSON'       => 2001,
         'INVALID_URL'        => 3000,
         'INVALID_METHOD'     => 3001,
         'HTTP_ERROR'         => 4000,
@@ -500,8 +499,16 @@ class CTGAPIClientError extends \Exception
 | DNS resolution failed | `DNS_FAILED` |
 | SSL certificate error | `SSL_ERROR` |
 | cURL error (other) | `REQUEST_FAILED` |
-| Malformed URL constructed | `INVALID_URL` |
-| Empty or invalid HTTP method | `INVALID_METHOD` |
+| Malformed URL (cURL error 3) | `INVALID_URL` |
+| Invalid HTTP method (not in GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) | `INVALID_METHOD` |
+
+### Response Body Parsing
+
+Response bodies are JSON-decoded when possible. If the body is not
+valid JSON, it is returned as a raw string. The library does not throw
+on non-JSON responses — this keeps the client flexible for APIs that
+return HTML, plain text, or other formats. Callers should check the
+type of `body` if they need to distinguish.
 
 ### When Exceptions Are NOT Thrown (Automatically)
 
