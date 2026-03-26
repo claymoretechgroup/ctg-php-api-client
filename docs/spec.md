@@ -862,8 +862,9 @@ automatically.
 
 ```php
 private function _buildUrl(string $path): string {
-    return rtrim($this->_baseUrl, '/') . '/' . ltrim($path, '/');
+    return $this->_baseUrl . '/' . ltrim($path, '/');
 }
+// Note: base URL trailing slash is already stripped in the constructor
 ```
 
 ### Instance Header Merging
@@ -873,11 +874,12 @@ private function _mergeHeaders(array $perRequest = []): array {
     $headers = [];
 
     // Automatic headers
+    $headers['User-Agent'] = 'CTGAPIClient/1.0';
     if ($this->_token !== null) {
         $headers['Authorization'] = "Bearer {$this->_token}";
     }
 
-    // Defaults
+    // Defaults (override automatic)
     foreach ($this->_headers as $name => $value) {
         $headers[$name] = $value;
     }
@@ -935,6 +937,8 @@ $type = match($errno) {
         => 'DNS_FAILED',
     CURLE_SSL_CONNECT_ERROR, CURLE_SSL_CERTPROBLEM
         => 'SSL_ERROR',
+    CURLE_URL_MALFORMAT
+        => 'INVALID_URL',
     default
         => 'REQUEST_FAILED',
 };

@@ -155,7 +155,7 @@ class CTGAPIClient {
         if (!is_file($filePath)) {
             throw new CTGAPIClientError('REQUEST_FAILED',
                 "Upload file not found: {$filePath}",
-                ['path' => $filePath]
+                ['file_path' => $filePath]
             );
         }
         $fields[$fieldName] = new \CURLFile($filePath);
@@ -200,6 +200,11 @@ class CTGAPIClient {
         }
 
         $isMultipart = self::_hasFile($body);
+
+        // Auto-set User-Agent if not provided
+        if (!self::_hasHeader($headers, 'User-Agent')) {
+            $headers['User-Agent'] = 'CTGAPIClient/1.0';
+        }
 
         // Build Content-Type if not provided and body is present
         if (!$isMultipart && !empty($body) && !self::_hasHeader($headers, 'Content-Type')) {
