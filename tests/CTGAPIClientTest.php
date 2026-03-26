@@ -710,13 +710,9 @@ CTGTest::init('static request — multipart body skips Content-Type auto-set')
             ['file' => new \CURLFile($tmp)]
         ),
     ])
-    ->assert('content-type is multipart', fn($r) => str_contains(
-        $r['result']['body']['content_type'] ?? ($r['result']['headers']['content-type'] ?? ''),
-        'multipart/form-data'
-    ) || !str_contains(
-        $r['result']['headers']['content-type'] ?? '',
-        'application/json'
-    ), true)
+    ->assert('request succeeded', fn($r) => $r['result']['status'], 200)
+    ->assert('file was received (not JSON-encoded)', fn($r) =>
+        isset($r['result']['body']['files']) || isset($r['result']['body']['file']), true)
     ->stage('cleanup', fn($r) => unlink($r['tmp']))
     ->start(null, $config);
 
@@ -836,19 +832,24 @@ CTGTest::init('transport error — data contains url and method')
 // ERROR DATA SAFETY
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('transport error — data does not contain auth headers')
+CTGTest::init('transport error — data does not contain auth or cookie headers')
     ->stage('attempt', function($_) use ($baseUrl) {
         try {
             CTGAPIClient::init('http://localhost:19999')
                 ->setToken('secret-token-12345')
+                ->setHeader('Cookie', 'session=secret-session-id')
                 ->GET('/nonexistent');
             return null;
         } catch (CTGAPIClientError $e) {
             return $e->data;
         }
     })
+    ->assert('has url', fn($r) => isset($r['url']), true)
+    ->assert('has method', fn($r) => isset($r['method']), true)
     ->assert('no authorization key', fn($r) => isset($r['authorization']), false)
+    ->assert('no cookie key', fn($r) => isset($r['cookie']), false)
     ->assert('no headers key', fn($r) => isset($r['headers']), false)
+    ->assert('url does not contain token', fn($r) => str_contains($r['url'] ?? '', 'secret-token'), false)
     ->start(null, $config);
 
 // ═══════════════════════════════════════════════════════════════
@@ -866,23 +867,49 @@ CTGTest::init('request — default User-Agent header sent')
 // PROXY BEHAVIOR
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('request — env proxy not honored')
+CTGTest::init('request — HTTP_PROXY env not honored')
     ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
-        $oldProxy = getenv('HTTP_PROXY');
+        $old = getenv('HTTP_PROXY');
         putenv('HTTP_PROXY=http://invalid-proxy:9999');
         try {
             $result = CTGAPIClient::init($baseUrl)
                 ->GET("{$endpointBase}/echo.php");
         } finally {
-            if ($oldProxy === false) {
-                putenv('HTTP_PROXY');
-            } else {
-                putenv("HTTP_PROXY={$oldProxy}");
-            }
+            $old === false ? putenv('HTTP_PROXY') : putenv("HTTP_PROXY={$old}");
         }
         return $result;
     })
-    ->assert('request succeeded despite invalid proxy env', fn($r) => $r['status'], 200)
+    ->assert('request succeeded', fn($r) => $r['status'], 200)
+    ->start(null, $config);
+
+CTGTest::init('request — HTTPS_PROXY env not honored')
+    ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
+        $old = getenv('HTTPS_PROXY');
+        putenv('HTTPS_PROXY=http://invalid-proxy:9999');
+        try {
+            $result = CTGAPIClient::init($baseUrl)
+                ->GET("{$endpointBase}/echo.php");
+        } finally {
+            $old === false ? putenv('HTTPS_PROXY') : putenv("HTTPS_PROXY={$old}");
+        }
+        return $result;
+    })
+    ->assert('request succeeded', fn($r) => $r['status'], 200)
+    ->start(null, $config);
+
+CTGTest::init('request — ALL_PROXY env not honored')
+    ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
+        $old = getenv('ALL_PROXY');
+        putenv('ALL_PROXY=http://invalid-proxy:9999');
+        try {
+            $result = CTGAPIClient::init($baseUrl)
+                ->GET("{$endpointBase}/echo.php");
+        } finally {
+            $old === false ? putenv('ALL_PROXY') : putenv("ALL_PROXY={$old}");
+        }
+        return $result;
+    })
+    ->assert('request succeeded', fn($r) => $r['status'], 200)
     ->start(null, $config);
 
 // ═══════════════════════════════════════════════════════════════
