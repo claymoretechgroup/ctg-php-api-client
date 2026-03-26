@@ -60,6 +60,7 @@ CTGTest::init('lookup — all codes')
         CTGAPIClientError::lookup('INVALID_URL'),
         CTGAPIClientError::lookup('INVALID_METHOD'),
         CTGAPIClientError::lookup('INVALID_BODY'),
+        CTGAPIClientError::lookup('INVALID_HEADER'),
         CTGAPIClientError::lookup('HTTP_ERROR'),
     ])
     ->assert('CONNECTION_FAILED', fn($r) => $r[0], 1000)
@@ -70,7 +71,8 @@ CTGTest::init('lookup — all codes')
     ->assert('INVALID_URL', fn($r) => $r[5], 3000)
     ->assert('INVALID_METHOD', fn($r) => $r[6], 3001)
     ->assert('INVALID_BODY', fn($r) => $r[7], 3002)
-    ->assert('HTTP_ERROR', fn($r) => $r[8], 4000)
+    ->assert('INVALID_HEADER', fn($r) => $r[8], 3003)
+    ->assert('HTTP_ERROR', fn($r) => $r[9], 4000)
     ->start(null, $config);
 
 // ── Chainable on()/otherwise() ──────────────────────────────────

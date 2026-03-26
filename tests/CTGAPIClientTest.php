@@ -153,6 +153,32 @@ CTGTest::init('static request — lowercase content-type not duplicated')
     ), true)
     ->start(null, $config);
 
+CTGTest::init('static request — invalid header name throws INVALID_HEADER')
+    ->stage('attempt', function($_) use ($endpointBase) {
+        try {
+            CTGAPIClient::request('GET', "http://localhost{$endpointBase}/echo.php",
+                [], [], ["Invalid Header\r\n" => 'value']);
+            return 'no exception';
+        } catch (CTGAPIClientError $e) {
+            return $e->type;
+        }
+    })
+    ->assert('throws INVALID_HEADER', fn($r) => $r, 'INVALID_HEADER')
+    ->start(null, $config);
+
+CTGTest::init('static request — header with spaces throws INVALID_HEADER')
+    ->stage('attempt', function($_) use ($endpointBase) {
+        try {
+            CTGAPIClient::request('GET', "http://localhost{$endpointBase}/echo.php",
+                [], [], ['Bad Name' => 'value']);
+            return 'no exception';
+        } catch (CTGAPIClientError $e) {
+            return $e->type;
+        }
+    })
+    ->assert('throws INVALID_HEADER', fn($r) => $r, 'INVALID_HEADER')
+    ->start(null, $config);
+
 CTGTest::init('static request — custom timeout')
     ->stage('execute', fn($_) => CTGAPIClient::request(
         'GET', "http://localhost{$endpointBase}/echo.php",

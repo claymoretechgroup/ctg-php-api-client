@@ -198,12 +198,17 @@ class CTGAPIClient {
             $headers['Content-Type'] = 'application/json';
         }
 
-        // Format headers for cURL — strip control characters to prevent CRLF injection
+        // Format headers for cURL — validate names per RFC 7230, strip control chars from values
         $formatted = [];
         foreach ($headers as $name => $value) {
-            $cleanName = str_replace(["\r", "\n", "\0"], '', $name);
+            if (!preg_match('/^[a-zA-Z0-9!#$%&\'*+\-.^_`|~]+$/', $name)) {
+                throw new CTGAPIClientError('INVALID_HEADER',
+                    "Invalid header name: {$name}",
+                    ['header' => $name]
+                );
+            }
             $cleanValue = str_replace(["\r", "\n", "\0"], '', $value);
-            $formatted[] = "{$cleanName}: {$cleanValue}";
+            $formatted[] = "{$name}: {$cleanValue}";
         }
 
         $ch = curl_init();

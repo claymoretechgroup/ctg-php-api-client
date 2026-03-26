@@ -450,6 +450,45 @@ header and issue a subsequent request.
 
 ---
 
+## Security Considerations
+
+### Header Validation
+
+Header names are validated against RFC 7230 token characters before
+being sent. Invalid header names throw `INVALID_HEADER`. Header values
+are stripped of `\r`, `\n`, and `\0` to prevent CRLF injection.
+
+### SSRF (Server-Side Request Forgery)
+
+The static `request()` method accepts arbitrary URLs. If the URL
+originates from user input or external data, callers should validate
+it before passing to the client:
+
+- Restrict allowed schemes (e.g., `https` only)
+- Restrict allowed hosts (allowlist of trusted API domains)
+- Block internal/link-local IP ranges (e.g., `10.x`, `172.16.x`,
+  `192.168.x`, `127.x`, `169.254.x`, `::1`, `fd00::`/8)
+
+The library does not enforce these restrictions — they are
+deployment-specific policy decisions.
+
+### Response Size
+
+The client reads full responses into memory. When calling untrusted
+endpoints, callers should consider setting a low `timeout` to limit
+exposure, or wrapping calls with memory monitoring. A future version
+may add a `max_response_size` config option using
+`CURLOPT_MAXFILESIZE`.
+
+### Error Data Redaction
+
+Error objects carry request context in `$data` (URL, method, headers).
+If errors are logged, callers should redact sensitive fields
+(Authorization headers, tokens, credentials in URLs) before
+persisting. The library does not perform automatic redaction.
+
+---
+
 ## Error Handling — CTGAPIClientError
 
 Transport-level failures throw `CTGAPIClientError`. HTTP error
@@ -472,6 +511,7 @@ class CTGAPIClientError extends \Exception
         'INVALID_URL'        => 3000,
         'INVALID_METHOD'     => 3001,
         'INVALID_BODY'       => 3002,
+        'INVALID_HEADER'     => 3003,
         'HTTP_ERROR'         => 4000,
     ];
 
@@ -511,6 +551,8 @@ class CTGAPIClientError extends \Exception
 | Malformed URL (cURL error 3) | `INVALID_URL` |
 | Invalid HTTP method (not in GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) | `INVALID_METHOD` |
 | Request body fails JSON encoding | `INVALID_BODY` |
+| Nested CURLFile in body | `INVALID_BODY` |
+| Invalid header name (non-RFC 7230) | `INVALID_HEADER` |
 
 ### Response Body Parsing
 
