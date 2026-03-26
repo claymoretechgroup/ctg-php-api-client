@@ -763,14 +763,21 @@ $bodyStr    = substr($response, $headerSize);
 
 ### Multipart Detection
 
+Checks top-level body values for CURLFile instances. Also rejects
+nested CURLFile with `INVALID_BODY` since cURL cannot process them
+as multipart uploads.
+
 ```php
 private static function _hasFile(array $body): bool {
+    $hasTopLevel = false;
     foreach ($body as $value) {
         if ($value instanceof \CURLFile) {
-            return true;
+            $hasTopLevel = true;
+        } elseif (is_array($value)) {
+            self::_rejectNestedFile($value);
         }
     }
-    return false;
+    return $hasTopLevel;
 }
 ```
 
