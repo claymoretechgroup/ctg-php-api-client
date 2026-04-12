@@ -1,17 +1,19 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/../vendor/autoload.php';
 
 use CTG\Test\CTGTest;
+use CTG\Test\CTGTestState;
+use CTG\Test\Predicates\CTGTestPredicates;
 use CTG\ApiClient\CTGAPIClient;
 use CTG\ApiClient\CTGAPIClientError;
 use CTG\FnProg\CTGFnprog;
 
+$pipelines = [];
+
 // Tests for CTGAPIClient — static request, instance methods, auth, headers, uploads
 // Requires the staging web container running with test endpoints
 
-$config = ['output' => 'console'];
 
 $baseUrl = 'http://localhost';
 $endpointBase = '/tests/endpoints';
@@ -20,66 +22,66 @@ $endpointBase = '/tests/endpoints';
 // CONSTRUCTION
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('init — static factory')
-    ->stage('create', fn($_) => CTGAPIClient::init($baseUrl))
-    ->assert('returns CTGAPIClient', fn($r) => $r instanceof CTGAPIClient, true)
-    ->start(null, $config);
+$pipelines[] = CTGTest::init('init — static factory')
+    ->stage('create', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl))
+    ->assert('returns CTGAPIClient', fn(CTGTestState $state) => $state->getSubject() instanceof CTGAPIClient, CTGTestPredicates::isTrue())
+    ;
 
-CTGTest::init('init — with config')
-    ->stage('create', fn($_) => CTGAPIClient::init($baseUrl, [
+$pipelines[] = CTGTest::init('init — with config')
+    ->stage('create', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl, [
         'timeout' => 10,
         'headers' => ['X-Custom' => 'test'],
     ]))
-    ->assert('returns CTGAPIClient', fn($r) => $r instanceof CTGAPIClient, true)
-    ->start(null, $config);
+    ->assert('returns CTGAPIClient', fn(CTGTestState $state) => $state->getSubject() instanceof CTGAPIClient, CTGTestPredicates::isTrue())
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // STATIC request()
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('static request — GET with full URL')
-    ->stage('execute', fn($_) => CTGAPIClient::request(
+$pipelines[] = CTGTest::init('static request — GET with full URL')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::request(
         'GET', "http://localhost{$endpointBase}/echo.php"
     ))
-    ->assert('status is 200', fn($r) => $r['status'], 200)
-    ->assert('method is GET', fn($r) => $r['body']['method'], 'GET')
-    ->start(null, $config);
+    ->assert('status is 200', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ->assert('method is GET', fn(CTGTestState $state) => $state->getSubject()['body']['method'], CTGTestPredicates::equals('GET'))
+    ;
 
-CTGTest::init('static request — POST with body')
-    ->stage('execute', fn($_) => CTGAPIClient::request(
+$pipelines[] = CTGTest::init('static request — POST with body')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::request(
         'POST', "http://localhost{$endpointBase}/echo.php",
         ['name' => 'Alice']
     ))
-    ->assert('method is POST', fn($r) => $r['body']['method'], 'POST')
-    ->assert('body sent', fn($r) => $r['body']['body']['name'], 'Alice')
-    ->start(null, $config);
+    ->assert('method is POST', fn(CTGTestState $state) => $state->getSubject()['body']['method'], CTGTestPredicates::equals('POST'))
+    ->assert('body sent', fn(CTGTestState $state) => $state->getSubject()['body']['body']['name'], CTGTestPredicates::equals('Alice'))
+    ;
 
-CTGTest::init('static request — with query params')
-    ->stage('execute', fn($_) => CTGAPIClient::request(
+$pipelines[] = CTGTest::init('static request — with query params')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::request(
         'GET', "http://localhost{$endpointBase}/echo.php",
         [], ['key' => 'value']
     ))
-    ->assert('param sent', fn($r) => $r['body']['params']['key'], 'value')
-    ->start(null, $config);
+    ->assert('param sent', fn(CTGTestState $state) => $state->getSubject()['body']['params']['key'], CTGTestPredicates::equals('value'))
+    ;
 
-CTGTest::init('static request — with headers')
-    ->stage('execute', fn($_) => CTGAPIClient::request(
+$pipelines[] = CTGTest::init('static request — with headers')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::request(
         'GET', "http://localhost{$endpointBase}/echo.php",
         [], [], ['X-Static-Header' => 'static-value']
     ))
-    ->assert('header sent', fn($r) => $r['body']['headers']['X-Static-Header'] ?? null, 'static-value')
-    ->start(null, $config);
+    ->assert('header sent', fn(CTGTestState $state) => $state->getSubject()['body']['headers']['X-Static-Header'] ?? null, CTGTestPredicates::equals('static-value'))
+    ;
 
-CTGTest::init('static request — with auth header')
-    ->stage('execute', fn($_) => CTGAPIClient::request(
+$pipelines[] = CTGTest::init('static request — with auth header')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::request(
         'GET', "http://localhost{$endpointBase}/auth.php",
         [], [], ['Authorization' => 'Bearer test-jwt-token-12345']
     ))
-    ->assert('authenticated', fn($r) => $r['body']['authenticated'], true)
-    ->start(null, $config);
+    ->assert('authenticated', fn(CTGTestState $state) => $state->getSubject()['body']['authenticated'], CTGTestPredicates::isTrue())
+    ;
 
-CTGTest::init('static request — empty method throws')
-    ->stage('attempt', function($_) {
+$pipelines[] = CTGTest::init('static request — empty method throws')
+    ->stage('attempt', function(CTGTestState $state) {
         try {
             CTGAPIClient::request('', 'http://localhost/test');
             return 'no exception';
@@ -87,11 +89,11 @@ CTGTest::init('static request — empty method throws')
             return $e->type;
         }
     })
-    ->assert('throws INVALID_METHOD', fn($r) => $r, 'INVALID_METHOD')
-    ->start(null, $config);
+    ->assert('throws INVALID_METHOD', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('INVALID_METHOD'))
+    ;
 
-CTGTest::init('static request — invalid method throws')
-    ->stage('attempt', function($_) {
+$pipelines[] = CTGTest::init('static request — invalid method throws')
+    ->stage('attempt', function(CTGTestState $state) {
         try {
             CTGAPIClient::request('BOGUS', 'http://localhost/test');
             return 'no exception';
@@ -99,11 +101,11 @@ CTGTest::init('static request — invalid method throws')
             return $e->type;
         }
     })
-    ->assert('throws INVALID_METHOD', fn($r) => $r, 'INVALID_METHOD')
-    ->start(null, $config);
+    ->assert('throws INVALID_METHOD', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('INVALID_METHOD'))
+    ;
 
-CTGTest::init('static request — malformed URL throws INVALID_URL')
-    ->stage('attempt', function($_) {
+$pipelines[] = CTGTest::init('static request — malformed URL throws INVALID_URL')
+    ->stage('attempt', function(CTGTestState $state) {
         try {
             CTGAPIClient::request('GET', 'http://');
             return 'no exception';
@@ -111,11 +113,11 @@ CTGTest::init('static request — malformed URL throws INVALID_URL')
             return $e->type;
         }
     })
-    ->assert('throws INVALID_URL', fn($r) => $r, 'INVALID_URL')
-    ->start(null, $config);
+    ->assert('throws INVALID_URL', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('INVALID_URL'))
+    ;
 
-CTGTest::init('static request — invalid body throws INVALID_BODY')
-    ->stage('attempt', function($_) use ($endpointBase) {
+$pipelines[] = CTGTest::init('static request — invalid body throws INVALID_BODY')
+    ->stage('attempt', function(CTGTestState $state) use ($endpointBase){
         try {
             // Invalid UTF-8 sequence causes json_encode to fail
             CTGAPIClient::request('POST', "http://localhost{$endpointBase}/echo.php",
@@ -125,11 +127,11 @@ CTGTest::init('static request — invalid body throws INVALID_BODY')
             return $e->type;
         }
     })
-    ->assert('throws INVALID_BODY', fn($r) => $r, 'INVALID_BODY')
-    ->start(null, $config);
+    ->assert('throws INVALID_BODY', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('INVALID_BODY'))
+    ;
 
-CTGTest::init('static request — nested CURLFile throws INVALID_BODY')
-    ->stage('attempt', function($_) use ($endpointBase) {
+$pipelines[] = CTGTest::init('static request — nested CURLFile throws INVALID_BODY')
+    ->stage('attempt', function(CTGTestState $state) use ($endpointBase){
         try {
             CTGAPIClient::request('POST', "http://localhost{$endpointBase}/echo.php",
                 ['meta' => ['file' => new \CURLFile('/dev/null')]]);
@@ -138,23 +140,23 @@ CTGTest::init('static request — nested CURLFile throws INVALID_BODY')
             return $e->type;
         }
     })
-    ->assert('throws INVALID_BODY', fn($r) => $r, 'INVALID_BODY')
-    ->start(null, $config);
+    ->assert('throws INVALID_BODY', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('INVALID_BODY'))
+    ;
 
-CTGTest::init('static request — lowercase content-type not duplicated')
-    ->stage('execute', fn($_) => CTGAPIClient::request(
+$pipelines[] = CTGTest::init('static request — lowercase content-type not duplicated')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::request(
         'POST', "http://localhost{$endpointBase}/echo.php",
         ['key' => 'value'], [], ['content-type' => 'text/plain']
     ))
-    ->assert('request succeeded', fn($r) => $r['status'], 200)
-    ->assert('sent content-type text/plain', fn($r) => str_contains(
-        $r['body']['headers']['content-type'] ?? $r['body']['headers']['Content-Type'] ?? '',
+    ->assert('request succeeded', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ->assert('sent content-type text/plain', fn(CTGTestState $state) => str_contains(
+        $state->getSubject()['body']['headers']['content-type'] ?? $state->getSubject()['body']['headers']['Content-Type'] ?? '',
         'text/plain'
-    ), true)
-    ->start(null, $config);
+    ), CTGTestPredicates::isTrue())
+    ;
 
-CTGTest::init('static request — invalid header name throws INVALID_HEADER')
-    ->stage('attempt', function($_) use ($endpointBase) {
+$pipelines[] = CTGTest::init('static request — invalid header name throws INVALID_HEADER')
+    ->stage('attempt', function(CTGTestState $state) use ($endpointBase){
         try {
             CTGAPIClient::request('GET', "http://localhost{$endpointBase}/echo.php",
                 [], [], ["Invalid Header\r\n" => 'value']);
@@ -163,11 +165,11 @@ CTGTest::init('static request — invalid header name throws INVALID_HEADER')
             return $e->type;
         }
     })
-    ->assert('throws INVALID_HEADER', fn($r) => $r, 'INVALID_HEADER')
-    ->start(null, $config);
+    ->assert('throws INVALID_HEADER', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('INVALID_HEADER'))
+    ;
 
-CTGTest::init('static request — header with spaces throws INVALID_HEADER')
-    ->stage('attempt', function($_) use ($endpointBase) {
+$pipelines[] = CTGTest::init('static request — header with spaces throws INVALID_HEADER')
+    ->stage('attempt', function(CTGTestState $state) use ($endpointBase){
         try {
             CTGAPIClient::request('GET', "http://localhost{$endpointBase}/echo.php",
                 [], [], ['Bad Name' => 'value']);
@@ -176,212 +178,212 @@ CTGTest::init('static request — header with spaces throws INVALID_HEADER')
             return $e->type;
         }
     })
-    ->assert('throws INVALID_HEADER', fn($r) => $r, 'INVALID_HEADER')
-    ->start(null, $config);
+    ->assert('throws INVALID_HEADER', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('INVALID_HEADER'))
+    ;
 
-CTGTest::init('static request — custom timeout')
-    ->stage('execute', fn($_) => CTGAPIClient::request(
+$pipelines[] = CTGTest::init('static request — custom timeout')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::request(
         'GET', "http://localhost{$endpointBase}/echo.php",
         [], [], [], 5
     ))
-    ->assert('request succeeded', fn($r) => $r['status'], 200)
-    ->start(null, $config);
+    ->assert('request succeeded', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // INSTANCE HTTP METHODS
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('GET — basic request')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('GET — basic request')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/echo.php"))
-    ->assert('status is 200', fn($r) => $r['status'], 200)
-    ->assert('ok is true', fn($r) => $r['ok'], true)
-    ->assert('body has method', fn($r) => $r['body']['method'], 'GET')
-    ->start(null, $config);
+    ->assert('status is 200', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ->assert('ok is true', fn(CTGTestState $state) => $state->getSubject()['ok'], CTGTestPredicates::isTrue())
+    ->assert('body has method', fn(CTGTestState $state) => $state->getSubject()['body']['method'], CTGTestPredicates::equals('GET'))
+    ;
 
-CTGTest::init('GET — with query parameters')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('GET — with query parameters')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/echo.php", ['role' => 'admin', 'active' => '1']))
-    ->assert('params echoed', fn($r) => $r['body']['params']['role'], 'admin')
-    ->assert('active param', fn($r) => $r['body']['params']['active'], '1')
-    ->start(null, $config);
+    ->assert('params echoed', fn(CTGTestState $state) => $state->getSubject()['body']['params']['role'], CTGTestPredicates::equals('admin'))
+    ->assert('active param', fn(CTGTestState $state) => $state->getSubject()['body']['params']['active'], CTGTestPredicates::equals('1'))
+    ;
 
-CTGTest::init('GET — with per-request headers')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('GET — with per-request headers')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/echo.php", [], ['X-Per-Request' => 'one-off']))
-    ->assert('per-request header sent', fn($r) => $r['body']['headers']['X-Per-Request'] ?? null, 'one-off')
-    ->start(null, $config);
+    ->assert('per-request header sent', fn(CTGTestState $state) => $state->getSubject()['body']['headers']['X-Per-Request'] ?? null, CTGTestPredicates::equals('one-off'))
+    ;
 
-CTGTest::init('GET — JSON endpoint')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('GET — JSON endpoint')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/json.php"))
-    ->assert('body is array', fn($r) => is_array($r['body']), true)
-    ->assert('has users', fn($r) => count($r['body']['users']), 3)
-    ->assert('first user is Alice', fn($r) => $r['body']['users'][0]['name'], 'Alice')
-    ->start(null, $config);
+    ->assert('body is array', fn(CTGTestState $state) => is_array($state->getSubject()['body']), CTGTestPredicates::isTrue())
+    ->assert('has users', fn(CTGTestState $state) => count($state->getSubject()['body']['users']), CTGTestPredicates::equals(3))
+    ->assert('first user is Alice', fn(CTGTestState $state) => $state->getSubject()['body']['users'][0]['name'], CTGTestPredicates::equals('Alice'))
+    ;
 
-CTGTest::init('POST — JSON body')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('POST — JSON body')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->POST("{$endpointBase}/echo.php", [
             'name' => 'Alice',
             'email' => 'alice@test.com',
         ]))
-    ->assert('method is POST', fn($r) => $r['body']['method'], 'POST')
-    ->assert('body sent', fn($r) => $r['body']['body']['name'], 'Alice')
-    ->assert('email sent', fn($r) => $r['body']['body']['email'], 'alice@test.com')
-    ->start(null, $config);
+    ->assert('method is POST', fn(CTGTestState $state) => $state->getSubject()['body']['method'], CTGTestPredicates::equals('POST'))
+    ->assert('body sent', fn(CTGTestState $state) => $state->getSubject()['body']['body']['name'], CTGTestPredicates::equals('Alice'))
+    ->assert('email sent', fn(CTGTestState $state) => $state->getSubject()['body']['body']['email'], CTGTestPredicates::equals('alice@test.com'))
+    ;
 
-CTGTest::init('POST — with query params and body')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('POST — with query params and body')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->POST("{$endpointBase}/echo.php", ['data' => 'value'], ['key' => 'abc']))
-    ->assert('body sent', fn($r) => $r['body']['body']['data'], 'value')
-    ->assert('param sent', fn($r) => $r['body']['params']['key'], 'abc')
-    ->start(null, $config);
+    ->assert('body sent', fn(CTGTestState $state) => $state->getSubject()['body']['body']['data'], CTGTestPredicates::equals('value'))
+    ->assert('param sent', fn(CTGTestState $state) => $state->getSubject()['body']['params']['key'], CTGTestPredicates::equals('abc'))
+    ;
 
-CTGTest::init('POST — with per-request headers')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('POST — with per-request headers')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->POST("{$endpointBase}/echo.php", ['x' => 1], [], ['X-Idempotency-Key' => 'abc']))
-    ->assert('header sent', fn($r) => $r['body']['headers']['X-Idempotency-Key'] ?? null, 'abc')
-    ->start(null, $config);
+    ->assert('header sent', fn(CTGTestState $state) => $state->getSubject()['body']['headers']['X-Idempotency-Key'] ?? null, CTGTestPredicates::equals('abc'))
+    ;
 
-CTGTest::init('PUT — JSON body')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('PUT — JSON body')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->PUT("{$endpointBase}/echo.php", ['name' => 'Updated']))
-    ->assert('method is PUT', fn($r) => $r['body']['method'], 'PUT')
-    ->assert('body sent', fn($r) => $r['body']['body']['name'], 'Updated')
-    ->start(null, $config);
+    ->assert('method is PUT', fn(CTGTestState $state) => $state->getSubject()['body']['method'], CTGTestPredicates::equals('PUT'))
+    ->assert('body sent', fn(CTGTestState $state) => $state->getSubject()['body']['body']['name'], CTGTestPredicates::equals('Updated'))
+    ;
 
-CTGTest::init('PATCH — JSON body')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('PATCH — JSON body')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->PATCH("{$endpointBase}/echo.php", ['field' => 'patched']))
-    ->assert('method is PATCH', fn($r) => $r['body']['method'], 'PATCH')
-    ->assert('body sent', fn($r) => $r['body']['body']['field'], 'patched')
-    ->start(null, $config);
+    ->assert('method is PATCH', fn(CTGTestState $state) => $state->getSubject()['body']['method'], CTGTestPredicates::equals('PATCH'))
+    ->assert('body sent', fn(CTGTestState $state) => $state->getSubject()['body']['body']['field'], CTGTestPredicates::equals('patched'))
+    ;
 
-CTGTest::init('DELETE — basic')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('DELETE — basic')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->DELETE("{$endpointBase}/echo.php"))
-    ->assert('method is DELETE', fn($r) => $r['body']['method'], 'DELETE')
-    ->start(null, $config);
+    ->assert('method is DELETE', fn(CTGTestState $state) => $state->getSubject()['body']['method'], CTGTestPredicates::equals('DELETE'))
+    ;
 
-CTGTest::init('DELETE — with query params')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('DELETE — with query params')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->DELETE("{$endpointBase}/echo.php", ['force' => 'true']))
-    ->assert('param sent', fn($r) => $r['body']['params']['force'], 'true')
-    ->start(null, $config);
+    ->assert('param sent', fn(CTGTestState $state) => $state->getSubject()['body']['params']['force'], CTGTestPredicates::equals('true'))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // RESPONSE STRUCTURE
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('response — has all required keys')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('response — has all required keys')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/echo.php"))
-    ->assert('has status', fn($r) => isset($r['status']), true)
-    ->assert('has ok', fn($r) => isset($r['ok']), true)
-    ->assert('has headers', fn($r) => isset($r['headers']), true)
-    ->assert('has body', fn($r) => isset($r['body']), true)
-    ->assert('headers is array', fn($r) => is_array($r['headers']), true)
-    ->assert('header keys lowercase', fn($r) => isset($r['headers']['content-type']), true)
-    ->start(null, $config);
+    ->assert('has status', fn(CTGTestState $state) => isset($state->getSubject()['status']), CTGTestPredicates::isTrue())
+    ->assert('has ok', fn(CTGTestState $state) => isset($state->getSubject()['ok']), CTGTestPredicates::isTrue())
+    ->assert('has headers', fn(CTGTestState $state) => isset($state->getSubject()['headers']), CTGTestPredicates::isTrue())
+    ->assert('has body', fn(CTGTestState $state) => isset($state->getSubject()['body']), CTGTestPredicates::isTrue())
+    ->assert('headers is array', fn(CTGTestState $state) => is_array($state->getSubject()['headers']), CTGTestPredicates::isTrue())
+    ->assert('header keys lowercase', fn(CTGTestState $state) => isset($state->getSubject()['headers']['content-type']), CTGTestPredicates::isTrue())
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // HTTP STATUS CODES
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('status — 200 is ok')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('status — 200 is ok')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/status.php", ['code' => 200]))
-    ->assert('ok is true', fn($r) => $r['ok'], true)
-    ->assert('status is 200', fn($r) => $r['status'], 200)
-    ->start(null, $config);
+    ->assert('ok is true', fn(CTGTestState $state) => $state->getSubject()['ok'], CTGTestPredicates::isTrue())
+    ->assert('status is 200', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ;
 
-CTGTest::init('status — 201 is ok')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('status — 201 is ok')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/status.php", ['code' => 201]))
-    ->assert('ok is true', fn($r) => $r['ok'], true)
-    ->start(null, $config);
+    ->assert('ok is true', fn(CTGTestState $state) => $state->getSubject()['ok'], CTGTestPredicates::isTrue())
+    ;
 
-CTGTest::init('status — 400 is not ok')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('status — 400 is not ok')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/status.php", ['code' => 400]))
-    ->assert('ok is false', fn($r) => $r['ok'], false)
-    ->assert('status is 400', fn($r) => $r['status'], 400)
-    ->assert('body still available', fn($r) => is_array($r['body']), true)
-    ->start(null, $config);
+    ->assert('ok is false', fn(CTGTestState $state) => $state->getSubject()['ok'], CTGTestPredicates::isFalse())
+    ->assert('status is 400', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(400))
+    ->assert('body still available', fn(CTGTestState $state) => is_array($state->getSubject()['body']), CTGTestPredicates::isTrue())
+    ;
 
-CTGTest::init('status — 401 is not ok')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('status — 401 is not ok')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/status.php", ['code' => 401]))
-    ->assert('ok is false', fn($r) => $r['ok'], false)
-    ->assert('status is 401', fn($r) => $r['status'], 401)
-    ->start(null, $config);
+    ->assert('ok is false', fn(CTGTestState $state) => $state->getSubject()['ok'], CTGTestPredicates::isFalse())
+    ->assert('status is 401', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(401))
+    ;
 
-CTGTest::init('status — 404 is not ok')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('status — 404 is not ok')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/status.php", ['code' => 404]))
-    ->assert('ok is false', fn($r) => $r['ok'], false)
-    ->assert('status is 404', fn($r) => $r['status'], 404)
-    ->start(null, $config);
+    ->assert('ok is false', fn(CTGTestState $state) => $state->getSubject()['ok'], CTGTestPredicates::isFalse())
+    ->assert('status is 404', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(404))
+    ;
 
-CTGTest::init('status — 500 is not ok')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('status — 500 is not ok')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/status.php", ['code' => 500]))
-    ->assert('ok is false', fn($r) => $r['ok'], false)
-    ->assert('status is 500', fn($r) => $r['status'], 500)
-    ->start(null, $config);
+    ->assert('ok is false', fn(CTGTestState $state) => $state->getSubject()['ok'], CTGTestPredicates::isFalse())
+    ->assert('status is 500', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(500))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // AUTHENTICATION
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('auth — no token returns 401')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('auth — no token returns 401')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/auth.php"))
-    ->assert('status is 401', fn($r) => $r['status'], 401)
-    ->assert('error message', fn($r) => $r['body']['error'], 'No authorization header')
-    ->start(null, $config);
+    ->assert('status is 401', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(401))
+    ->assert('error message', fn(CTGTestState $state) => $state->getSubject()['body']['error'], CTGTestPredicates::equals('No authorization header'))
+    ;
 
-CTGTest::init('auth — wrong token returns 403')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('auth — wrong token returns 403')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->setToken('wrong-token')
         ->GET("{$endpointBase}/auth.php"))
-    ->assert('status is 403', fn($r) => $r['status'], 403)
-    ->assert('error message', fn($r) => $r['body']['error'], 'Invalid token')
-    ->start(null, $config);
+    ->assert('status is 403', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(403))
+    ->assert('error message', fn(CTGTestState $state) => $state->getSubject()['body']['error'], CTGTestPredicates::equals('Invalid token'))
+    ;
 
-CTGTest::init('auth — valid token returns 200')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('auth — valid token returns 200')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->setToken('test-jwt-token-12345')
         ->GET("{$endpointBase}/auth.php"))
-    ->assert('status is 200', fn($r) => $r['status'], 200)
-    ->assert('authenticated', fn($r) => $r['body']['authenticated'], true)
-    ->assert('token echoed', fn($r) => $r['body']['token'], 'test-jwt-token-12345')
-    ->start(null, $config);
+    ->assert('status is 200', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ->assert('authenticated', fn(CTGTestState $state) => $state->getSubject()['body']['authenticated'], CTGTestPredicates::isTrue())
+    ->assert('token echoed', fn(CTGTestState $state) => $state->getSubject()['body']['token'], CTGTestPredicates::equals('test-jwt-token-12345'))
+    ;
 
-CTGTest::init('auth — token persists across requests')
-    ->stage('create client', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('auth — token persists across requests')
+    ->stage('create client', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->setToken('test-jwt-token-12345'))
-    ->stage('first request', fn($api) => ['api' => $api, 'r1' => $api->GET("{$endpointBase}/auth.php")])
-    ->stage('second request', fn($ctx) => ['r1' => $ctx['r1'], 'r2' => $ctx['api']->GET("{$endpointBase}/auth.php")])
-    ->assert('first authenticated', fn($r) => $r['r1']['body']['authenticated'], true)
-    ->assert('second authenticated', fn($r) => $r['r2']['body']['authenticated'], true)
-    ->start(null, $config);
+    ->stage('first request', fn(CTGTestState $state) => ['api' => $state->getSubject(), 'r1' => $state->getSubject()->GET("{$endpointBase}/auth.php")])
+    ->stage('second request', fn(CTGTestState $state) => ['r1' => $state->getSubject()['r1'], 'r2' => $state->getSubject()['api']->GET("{$endpointBase}/auth.php")])
+    ->assert('first authenticated', fn(CTGTestState $state) => $state->getSubject()['r1']['body']['authenticated'], CTGTestPredicates::isTrue())
+    ->assert('second authenticated', fn(CTGTestState $state) => $state->getSubject()['r2']['body']['authenticated'], CTGTestPredicates::isTrue())
+    ;
 
-CTGTest::init('auth — clearToken removes auth')
-    ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
+$pipelines[] = CTGTest::init('auth — clearToken removes auth')
+    ->stage('execute', function(CTGTestState $state) use ($baseUrl, $endpointBase){
         $api = CTGAPIClient::init($baseUrl)->setToken('test-jwt-token-12345');
         $before = $api->GET("{$endpointBase}/auth.php");
         $api->clearToken();
         $after = $api->GET("{$endpointBase}/auth.php");
         return ['before' => $before, 'after' => $after];
     })
-    ->assert('before: authenticated', fn($r) => $r['before']['status'], 200)
-    ->assert('after: not authenticated', fn($r) => $r['after']['status'], 401)
-    ->start(null, $config);
+    ->assert('before: authenticated', fn(CTGTestState $state) => $state->getSubject()['before']['status'], CTGTestPredicates::equals(200))
+    ->assert('after: not authenticated', fn(CTGTestState $state) => $state->getSubject()['after']['status'], CTGTestPredicates::equals(401))
+    ;
 
-CTGTest::init('auth — getToken returns current token')
-    ->stage('execute', function($_) use ($baseUrl) {
+$pipelines[] = CTGTest::init('auth — getToken returns current token')
+    ->stage('execute', function(CTGTestState $state) use ($baseUrl){
         $api = CTGAPIClient::init($baseUrl);
         $before = $api->getToken();
         $api->setToken('my-token');
@@ -390,166 +392,166 @@ CTGTest::init('auth — getToken returns current token')
         $after = $api->getToken();
         return ['before' => $before, 'during' => $during, 'after' => $after];
     })
-    ->assert('initially null', fn($r) => $r['before'], null)
-    ->assert('set to my-token', fn($r) => $r['during'], 'my-token')
-    ->assert('cleared to null', fn($r) => $r['after'], null)
-    ->start(null, $config);
+    ->assert('initially null', fn(CTGTestState $state) => $state->getSubject()['before'], CTGTestPredicates::isNull())
+    ->assert('set to my-token', fn(CTGTestState $state) => $state->getSubject()['during'], CTGTestPredicates::equals('my-token'))
+    ->assert('cleared to null', fn(CTGTestState $state) => $state->getSubject()['after'], CTGTestPredicates::isNull())
+    ;
 
-CTGTest::init('auth — token sent with POST')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('auth — token sent with POST')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->setToken('test-jwt-token-12345')
         ->POST("{$endpointBase}/auth.php", ['data' => 'test']))
-    ->assert('authenticated via POST', fn($r) => $r['body']['authenticated'], true)
-    ->assert('method is POST', fn($r) => $r['body']['method'], 'POST')
-    ->start(null, $config);
+    ->assert('authenticated via POST', fn(CTGTestState $state) => $state->getSubject()['body']['authenticated'], CTGTestPredicates::isTrue())
+    ->assert('method is POST', fn(CTGTestState $state) => $state->getSubject()['body']['method'], CTGTestPredicates::equals('POST'))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // HEADERS
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('headers — custom header sent')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('headers — custom header sent')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->setHeader('X-Custom-Header', 'test-value')
         ->GET("{$endpointBase}/echo.php"))
-    ->assert('header echoed', fn($r) => $r['body']['headers']['X-Custom-Header'] ?? null, 'test-value')
-    ->start(null, $config);
+    ->assert('header echoed', fn(CTGTestState $state) => $state->getSubject()['body']['headers']['X-Custom-Header'] ?? null, CTGTestPredicates::equals('test-value'))
+    ;
 
-CTGTest::init('headers — multiple headers')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('headers — multiple headers')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->setHeaders(['X-First' => 'one', 'X-Second' => 'two'])
         ->GET("{$endpointBase}/echo.php"))
-    ->assert('first header', fn($r) => $r['body']['headers']['X-First'] ?? null, 'one')
-    ->assert('second header', fn($r) => $r['body']['headers']['X-Second'] ?? null, 'two')
-    ->start(null, $config);
+    ->assert('first header', fn(CTGTestState $state) => $state->getSubject()['body']['headers']['X-First'] ?? null, CTGTestPredicates::equals('one'))
+    ->assert('second header', fn(CTGTestState $state) => $state->getSubject()['body']['headers']['X-Second'] ?? null, CTGTestPredicates::equals('two'))
+    ;
 
-CTGTest::init('headers — removeHeader')
-    ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
+$pipelines[] = CTGTest::init('headers — removeHeader')
+    ->stage('execute', function(CTGTestState $state) use ($baseUrl, $endpointBase){
         $api = CTGAPIClient::init($baseUrl)->setHeader('X-Remove-Me', 'present');
         $before = $api->GET("{$endpointBase}/echo.php");
         $api->removeHeader('X-Remove-Me');
         $after = $api->GET("{$endpointBase}/echo.php");
         return ['before' => $before, 'after' => $after];
     })
-    ->assert('present before', fn($r) => $r['before']['body']['headers']['X-Remove-Me'] ?? null, 'present')
-    ->assert('gone after', fn($r) => $r['after']['body']['headers']['X-Remove-Me'] ?? null, null)
-    ->start(null, $config);
+    ->assert('present before', fn(CTGTestState $state) => $state->getSubject()['before']['body']['headers']['X-Remove-Me'] ?? null, CTGTestPredicates::equals('present'))
+    ->assert('gone after', fn(CTGTestState $state) => $state->getSubject()['after']['body']['headers']['X-Remove-Me'] ?? null, CTGTestPredicates::isNull())
+    ;
 
-CTGTest::init('headers — Content-Type auto-set for JSON')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('headers — Content-Type auto-set for JSON')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->POST("{$endpointBase}/echo.php", ['test' => 'data']))
-    ->assert('content-type is json', fn($r) => str_contains(
-        $r['body']['headers']['Content-Type'] ?? '', 'application/json'), true)
-    ->start(null, $config);
+    ->assert('content-type is json', fn(CTGTestState $state) => str_contains(
+        $state->getSubject()['body']['headers']['Content-Type'] ?? '', 'application/json'), CTGTestPredicates::isTrue())
+    ;
 
 // ── Per-request header merge behavior ───────────────────────────
 
-CTGTest::init('per-request headers — override default for one call')
-    ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
+$pipelines[] = CTGTest::init('per-request headers — override default for one call')
+    ->stage('execute', function(CTGTestState $state) use ($baseUrl, $endpointBase){
         $api = CTGAPIClient::init($baseUrl)->setHeader('X-Lang', 'en');
         $overridden = $api->GET("{$endpointBase}/echo.php", [], ['X-Lang' => 'fr']);
         $nextCall = $api->GET("{$endpointBase}/echo.php");
         return ['overridden' => $overridden, 'next' => $nextCall];
     })
-    ->assert('overridden to fr', fn($r) => $r['overridden']['body']['headers']['X-Lang'] ?? null, 'fr')
-    ->assert('next call back to en', fn($r) => $r['next']['body']['headers']['X-Lang'] ?? null, 'en')
-    ->start(null, $config);
+    ->assert('overridden to fr', fn(CTGTestState $state) => $state->getSubject()['overridden']['body']['headers']['X-Lang'] ?? null, CTGTestPredicates::equals('fr'))
+    ->assert('next call back to en', fn(CTGTestState $state) => $state->getSubject()['next']['body']['headers']['X-Lang'] ?? null, CTGTestPredicates::equals('en'))
+    ;
 
-CTGTest::init('per-request headers — supplement defaults')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('per-request headers — supplement defaults')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->setHeader('X-Default', 'default-val')
         ->GET("{$endpointBase}/echo.php", [], ['X-Extra' => 'extra-val']))
-    ->assert('default present', fn($r) => $r['body']['headers']['X-Default'] ?? null, 'default-val')
-    ->assert('extra present', fn($r) => $r['body']['headers']['X-Extra'] ?? null, 'extra-val')
-    ->start(null, $config);
+    ->assert('default present', fn(CTGTestState $state) => $state->getSubject()['body']['headers']['X-Default'] ?? null, CTGTestPredicates::equals('default-val'))
+    ->assert('extra present', fn(CTGTestState $state) => $state->getSubject()['body']['headers']['X-Extra'] ?? null, CTGTestPredicates::equals('extra-val'))
+    ;
 
-CTGTest::init('per-request headers — do not persist')
-    ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
+$pipelines[] = CTGTest::init('per-request headers — do not persist')
+    ->stage('execute', function(CTGTestState $state) use ($baseUrl, $endpointBase){
         $api = CTGAPIClient::init($baseUrl);
         $api->GET("{$endpointBase}/echo.php", [], ['X-One-Off' => 'temp']);
         $nextCall = $api->GET("{$endpointBase}/echo.php");
         return $nextCall;
     })
-    ->assert('one-off header gone', fn($r) => $r['body']['headers']['X-One-Off'] ?? null, null)
-    ->start(null, $config);
+    ->assert('one-off header gone', fn(CTGTestState $state) => $state->getSubject()['body']['headers']['X-One-Off'] ?? null, CTGTestPredicates::isNull())
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // FILE UPLOADS
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('upload — file via upload()')
-    ->stage('setup', function($_) {
+$pipelines[] = CTGTest::init('upload — file via upload()')
+    ->stage('setup', function(CTGTestState $state) {
         $tmp = tempnam('/tmp', 'ctg_test_');
         file_put_contents($tmp, 'test file content');
         return $tmp;
     })
-    ->stage('upload', fn($tmp) => [
-        'tmp' => $tmp,
+    ->stage('upload', fn(CTGTestState $state) => [
+        'tmp' => $state->getSubject(),
         'result' => CTGAPIClient::init($baseUrl)
-            ->upload("{$endpointBase}/upload.php", $tmp, ['title' => 'Test Doc'])
+            ->upload("{$endpointBase}/upload.php", $state->getSubject(), ['title' => 'Test Doc'])
     ])
-    ->assert('status is 200', fn($r) => $r['result']['status'], 200)
-    ->assert('file received', fn($r) => isset($r['result']['body']['files']['file']), true)
-    ->assert('file has size', fn($r) => $r['result']['body']['files']['file']['size'] > 0, true)
-    ->assert('extra field sent', fn($r) => $r['result']['body']['fields']['title'], 'Test Doc')
-    ->stage('cleanup', fn($r) => unlink($r['tmp']))
-    ->start(null, $config);
+    ->assert('status is 200', fn(CTGTestState $state) => $state->getSubject()['result']['status'], CTGTestPredicates::equals(200))
+    ->assert('file received', fn(CTGTestState $state) => isset($state->getSubject()['result']['body']['files']['file']), CTGTestPredicates::isTrue())
+    ->assert('file has size', fn(CTGTestState $state) => $state->getSubject()['result']['body']['files']['file']['size'] > 0, CTGTestPredicates::isTrue())
+    ->assert('extra field sent', fn(CTGTestState $state) => $state->getSubject()['result']['body']['fields']['title'], CTGTestPredicates::equals('Test Doc'))
+    ->stage('cleanup', fn(CTGTestState $state) => unlink($state->getSubject()['tmp']))
+    ;
 
-CTGTest::init('upload — custom field name')
-    ->stage('setup', function($_) {
+$pipelines[] = CTGTest::init('upload — custom field name')
+    ->stage('setup', function(CTGTestState $state) {
         $tmp = tempnam('/tmp', 'ctg_test_');
         file_put_contents($tmp, 'avatar data');
         return $tmp;
     })
-    ->stage('upload', fn($tmp) => [
-        'tmp' => $tmp,
+    ->stage('upload', fn(CTGTestState $state) => [
+        'tmp' => $state->getSubject(),
         'result' => CTGAPIClient::init($baseUrl)
-            ->upload("{$endpointBase}/upload.php", $tmp, [], 'avatar')
+            ->upload("{$endpointBase}/upload.php", $state->getSubject(), [], 'avatar')
     ])
-    ->assert('file under avatar key', fn($r) => isset($r['result']['body']['files']['avatar']), true)
-    ->stage('cleanup', fn($r) => unlink($r['tmp']))
-    ->start(null, $config);
+    ->assert('file under avatar key', fn(CTGTestState $state) => isset($state->getSubject()['result']['body']['files']['avatar']), CTGTestPredicates::isTrue())
+    ->stage('cleanup', fn(CTGTestState $state) => unlink($state->getSubject()['tmp']))
+    ;
 
-CTGTest::init('upload — CURLFile in POST auto-detects multipart')
-    ->stage('setup', function($_) {
+$pipelines[] = CTGTest::init('upload — CURLFile in POST auto-detects multipart')
+    ->stage('setup', function(CTGTestState $state) {
         $tmp = tempnam('/tmp', 'ctg_test_');
         file_put_contents($tmp, 'direct curlfile test');
         return $tmp;
     })
-    ->stage('post', fn($tmp) => [
-        'tmp' => $tmp,
+    ->stage('post', fn(CTGTestState $state) => [
+        'tmp' => $state->getSubject(),
         'result' => CTGAPIClient::init($baseUrl)
             ->POST("{$endpointBase}/upload.php", [
-                'document' => new \CURLFile($tmp),
+                'document' => new \CURLFile($state->getSubject()),
                 'category' => 'reports',
             ])
     ])
-    ->assert('file received', fn($r) => isset($r['result']['body']['files']['document']), true)
-    ->assert('extra field sent', fn($r) => $r['result']['body']['fields']['category'], 'reports')
-    ->stage('cleanup', fn($r) => unlink($r['tmp']))
-    ->start(null, $config);
+    ->assert('file received', fn(CTGTestState $state) => isset($state->getSubject()['result']['body']['files']['document']), CTGTestPredicates::isTrue())
+    ->assert('extra field sent', fn(CTGTestState $state) => $state->getSubject()['result']['body']['fields']['category'], CTGTestPredicates::equals('reports'))
+    ->stage('cleanup', fn(CTGTestState $state) => unlink($state->getSubject()['tmp']))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // URL NORMALIZATION
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('URL — trailing slash on base, leading slash on path')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl . '/')
+$pipelines[] = CTGTest::init('URL — trailing slash on base, leading slash on path')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl . '/')
         ->GET("/{$endpointBase}/echo.php"))
-    ->assert('request succeeded', fn($r) => $r['status'], 200)
-    ->start(null, $config);
+    ->assert('request succeeded', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ;
 
-CTGTest::init('URL — no slashes')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('URL — no slashes')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/echo.php"))
-    ->assert('request succeeded', fn($r) => $r['status'], 200)
-    ->start(null, $config);
+    ->assert('request succeeded', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // TRANSPORT ERRORS
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('error — connection refused')
-    ->stage('attempt', function($_) {
+$pipelines[] = CTGTest::init('error — connection refused')
+    ->stage('attempt', function(CTGTestState $state) {
         try {
             CTGAPIClient::init('http://localhost:19999')->GET('/nonexistent');
             return 'no exception';
@@ -557,11 +559,11 @@ CTGTest::init('error — connection refused')
             return $e->type;
         }
     })
-    ->assert('throws CONNECTION_FAILED', fn($r) => $r, 'CONNECTION_FAILED')
-    ->start(null, $config);
+    ->assert('throws CONNECTION_FAILED', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('CONNECTION_FAILED'))
+    ;
 
-CTGTest::init('error — connection refused via static request')
-    ->stage('attempt', function($_) {
+$pipelines[] = CTGTest::init('error — connection refused via static request')
+    ->stage('attempt', function(CTGTestState $state) {
         try {
             CTGAPIClient::request('GET', 'http://localhost:19999/nonexistent');
             return 'no exception';
@@ -569,11 +571,11 @@ CTGTest::init('error — connection refused via static request')
             return $e->type;
         }
     })
-    ->assert('throws CONNECTION_FAILED', fn($r) => $r, 'CONNECTION_FAILED')
-    ->start(null, $config);
+    ->assert('throws CONNECTION_FAILED', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('CONNECTION_FAILED'))
+    ;
 
-CTGTest::init('error — DNS failure')
-    ->stage('attempt', function($_) {
+$pipelines[] = CTGTest::init('error — DNS failure')
+    ->stage('attempt', function(CTGTestState $state) {
         try {
             CTGAPIClient::init('http://this-domain-definitely-does-not-exist-xyz123.com')
                 ->GET('/test');
@@ -582,11 +584,11 @@ CTGTest::init('error — DNS failure')
             return in_array($e->type, ['DNS_FAILED', 'CONNECTION_FAILED']);
         }
     })
-    ->assert('throws DNS or connection error', fn($r) => $r, true)
-    ->start(null, $config);
+    ->assert('throws DNS or connection error', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::isTrue())
+    ;
 
-CTGTest::init('error — timeout')
-    ->stage('attempt', function($_) {
+$pipelines[] = CTGTest::init('error — timeout')
+    ->stage('attempt', function(CTGTestState $state) {
         try {
             CTGAPIClient::init('http://10.255.255.1', ['timeout' => 1])
                 ->GET('/test');
@@ -595,15 +597,15 @@ CTGTest::init('error — timeout')
             return in_array($e->type, ['TIMEOUT', 'CONNECTION_FAILED']);
         }
     })
-    ->assert('throws timeout or connection error', fn($r) => $r, true)
-    ->start(null, $config);
+    ->assert('throws timeout or connection error', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::isTrue())
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // HTTP_ERROR — CALLER-INITIATED
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('HTTP_ERROR — caller throws on non-ok response')
-    ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
+$pipelines[] = CTGTest::init('HTTP_ERROR — caller throws on non-ok response')
+    ->stage('execute', function(CTGTestState $state) use ($baseUrl, $endpointBase){
         try {
             $result = CTGAPIClient::init($baseUrl)
                 ->GET("{$endpointBase}/status.php", ['code' => 404]);
@@ -616,12 +618,12 @@ CTGTest::init('HTTP_ERROR — caller throws on non-ok response')
             return ['type' => $e->type, 'status' => $e->data['status']];
         }
     })
-    ->assert('type is HTTP_ERROR', fn($r) => $r['type'], 'HTTP_ERROR')
-    ->assert('status is 404', fn($r) => $r['status'], 404)
-    ->start(null, $config);
+    ->assert('type is HTTP_ERROR', fn(CTGTestState $state) => $state->getSubject()['type'], CTGTestPredicates::equals('HTTP_ERROR'))
+    ->assert('status is 404', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(404))
+    ;
 
-CTGTest::init('HTTP_ERROR — chainable with transport errors')
-    ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
+$pipelines[] = CTGTest::init('HTTP_ERROR — chainable with transport errors')
+    ->stage('execute', function(CTGTestState $state) use ($baseUrl, $endpointBase){
         $matched = null;
         try {
             $result = CTGAPIClient::init($baseUrl)
@@ -637,11 +639,11 @@ CTGTest::init('HTTP_ERROR — chainable with transport errors')
         }
         return $matched;
     })
-    ->assert('matched HTTP_ERROR with status', fn($r) => $r, 'http:401')
-    ->start(null, $config);
+    ->assert('matched HTTP_ERROR with status', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('http:401'))
+    ;
 
-CTGTest::init('HTTP_ERROR — full response in data')
-    ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
+$pipelines[] = CTGTest::init('HTTP_ERROR — full response in data')
+    ->stage('execute', function(CTGTestState $state) use ($baseUrl, $endpointBase){
         try {
             $result = CTGAPIClient::init($baseUrl)
                 ->GET("{$endpointBase}/status.php", ['code' => 500]);
@@ -654,74 +656,71 @@ CTGTest::init('HTTP_ERROR — full response in data')
             return $e->data;
         }
     })
-    ->assert('data has status', fn($r) => $r['status'], 500)
-    ->assert('data has ok', fn($r) => $r['ok'], false)
-    ->assert('data has body', fn($r) => is_array($r['body']), true)
-    ->assert('data has headers', fn($r) => is_array($r['headers']), true)
-    ->start(null, $config);
+    ->assert('data has status', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(500))
+    ->assert('data has ok', fn(CTGTestState $state) => $state->getSubject()['ok'], CTGTestPredicates::isFalse())
+    ->assert('data has body', fn(CTGTestState $state) => is_array($state->getSubject()['body']), CTGTestPredicates::isTrue())
+    ->assert('data has headers', fn(CTGTestState $state) => is_array($state->getSubject()['headers']), CTGTestPredicates::isTrue())
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // METHOD VALIDATION
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('static request — HEAD is valid method')
-    ->stage('execute', fn($_) => CTGAPIClient::request(
+$pipelines[] = CTGTest::init('static request — HEAD is valid method')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::request(
         'HEAD', "http://localhost{$endpointBase}/echo.php"
     ))
-    ->assert('status is 200', fn($r) => $r['status'], 200)
-    ->start(null, $config);
+    ->assert('status is 200', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ;
 
-CTGTest::init('static request — OPTIONS is valid method')
-    ->stage('execute', fn($_) => CTGAPIClient::request(
+$pipelines[] = CTGTest::init('static request — OPTIONS is valid method')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::request(
         'OPTIONS', "http://localhost{$endpointBase}/echo.php"
     ))
-    ->assert('status is 200', fn($r) => $r['status'], 200)
-    ->start(null, $config);
+    ->assert('status is 200', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // HEADER VALIDATION
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('static request — CRLF stripped from header values')
-    ->stage('execute', fn($_) => CTGAPIClient::request(
+$pipelines[] = CTGTest::init('static request — CRLF stripped from header values')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::request(
         'GET', "http://localhost{$endpointBase}/echo.php",
         [], [], ['X-Test-Header' => "safe\r\nX-Injected: evil"]
     ))
-    ->assert('echoed value has no CRLF', fn($r) =>
-        str_contains($r['body']['headers']['X-Test-Header'] ?? '', "\r\n"), false)
-    ->assert('no injected header', fn($r) =>
-        isset($r['body']['headers']['X-Injected']), false)
-    ->start(null, $config);
+    ->assert('echoed value has no CRLF', fn(CTGTestState $state) => str_contains($state->getSubject()['body']['headers']['X-Test-Header'] ?? '', "\r\n"), CTGTestPredicates::isFalse())
+    ->assert('no injected header', fn(CTGTestState $state) => isset($state->getSubject()['body']['headers']['X-Injected']), CTGTestPredicates::isFalse())
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // CONTENT-TYPE
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('static request — multipart body skips Content-Type auto-set')
-    ->stage('setup', function($_) {
+$pipelines[] = CTGTest::init('static request — multipart body skips Content-Type auto-set')
+    ->stage('setup', function(CTGTestState $state) {
         $tmp = tempnam('/tmp', 'ctg_test_');
         file_put_contents($tmp, 'multipart test content');
         return $tmp;
     })
-    ->stage('execute', fn($tmp) => [
-        'tmp' => $tmp,
+    ->stage('execute', fn(CTGTestState $state) => [
+        'tmp' => $state->getSubject(),
         'result' => CTGAPIClient::request(
             'POST', "http://localhost{$endpointBase}/upload.php",
-            ['file' => new \CURLFile($tmp)]
+            ['file' => new \CURLFile($state->getSubject())]
         ),
     ])
-    ->assert('request succeeded', fn($r) => $r['result']['status'], 200)
-    ->assert('file was received (not JSON-encoded)', fn($r) =>
-        isset($r['result']['body']['files']) || isset($r['result']['body']['file']), true)
-    ->stage('cleanup', fn($r) => unlink($r['tmp']))
-    ->start(null, $config);
+    ->assert('request succeeded', fn(CTGTestState $state) => $state->getSubject()['result']['status'], CTGTestPredicates::equals(200))
+    ->assert('file was received (not JSON-encoded)', fn(CTGTestState $state) => isset($state->getSubject()['result']['body']['files']) || isset($state->getSubject()['result']['body']['file']), CTGTestPredicates::isTrue())
+    ->stage('cleanup', fn(CTGTestState $state) => unlink($state->getSubject()['tmp']))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // UPLOAD ERRORS
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('upload — missing file throws REQUEST_FAILED')
-    ->stage('attempt', function($_) use ($baseUrl, $endpointBase) {
+$pipelines[] = CTGTest::init('upload — missing file throws REQUEST_FAILED')
+    ->stage('attempt', function(CTGTestState $state) use ($baseUrl, $endpointBase){
         try {
             CTGAPIClient::init($baseUrl)
                 ->upload("{$endpointBase}/upload.php", '/nonexistent/file.txt');
@@ -730,91 +729,87 @@ CTGTest::init('upload — missing file throws REQUEST_FAILED')
             return $e->type;
         }
     })
-    ->assert('throws REQUEST_FAILED', fn($r) => $r, 'REQUEST_FAILED')
-    ->start(null, $config);
+    ->assert('throws REQUEST_FAILED', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('REQUEST_FAILED'))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // HEADER MERGE PRIORITY
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('headers — default Authorization overrides automatic token')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('headers — default Authorization overrides automatic token')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->setToken('my-jwt-token')
         ->setHeader('Authorization', 'Basic xyz')
         ->GET("{$endpointBase}/echo.php"))
-    ->assert('uses Basic not Bearer', fn($r) =>
-        $r['body']['headers']['Authorization'] ?? null, 'Basic xyz')
-    ->start(null, $config);
+    ->assert('uses Basic not Bearer', fn(CTGTestState $state) => $state->getSubject()['body']['headers']['Authorization'] ?? null, CTGTestPredicates::equals('Basic xyz'))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // RESPONSE STATUS — 3xx
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('response — 3xx returns ok false')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('response — 3xx returns ok false')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/status.php", ['code' => 301]))
-    ->assert('ok is false', fn($r) => $r['ok'], false)
-    ->assert('status is 301', fn($r) => $r['status'], 301)
-    ->start(null, $config);
+    ->assert('ok is false', fn(CTGTestState $state) => $state->getSubject()['ok'], CTGTestPredicates::isFalse())
+    ->assert('status is 301', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(301))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // RESPONSE BODY PARSING
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('response — non-JSON body returns raw string')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('response — non-JSON body returns raw string')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/redirect.php"))
-    ->assert('body is string', fn($r) => is_string($r['body']), true)
-    ->assert('body is raw text', fn($r) => $r['body'], 'redirecting')
-    ->start(null, $config);
+    ->assert('body is string', fn(CTGTestState $state) => is_string($state->getSubject()['body']), CTGTestPredicates::isTrue())
+    ->assert('body is raw text', fn(CTGTestState $state) => $state->getSubject()['body'], CTGTestPredicates::equals('redirecting'))
+    ;
 
-CTGTest::init('response — empty body returns empty string')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('response — empty body returns empty string')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/status.php", ['code' => 204]))
-    ->assert('body is empty string', fn($r) => $r['body'], '')
-    ->start(null, $config);
+    ->assert('body is empty string', fn(CTGTestState $state) => $state->getSubject()['body'], CTGTestPredicates::equals(''))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // RESPONSE HEADER PARSING
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('response — duplicate headers comma-joined')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('response — duplicate headers comma-joined')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/headers.php"))
-    ->assert('x-duplicate is comma-joined', fn($r) =>
-        $r['headers']['x-duplicate'] ?? null, 'value1, value2')
-    ->start(null, $config);
+    ->assert('x-duplicate is comma-joined', fn(CTGTestState $state) => $state->getSubject()['headers']['x-duplicate'] ?? null, CTGTestPredicates::equals('value1, value2'))
+    ;
 
-CTGTest::init('response — set-cookie collected as array')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('response — set-cookie collected as array')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/headers.php"))
-    ->assert('set-cookie is array', fn($r) => is_array($r['headers']['set-cookie'] ?? null), true)
-    ->assert('has two cookies', fn($r) => count($r['headers']['set-cookie'] ?? []), 2)
-    ->assert('first cookie', fn($r) => $r['headers']['set-cookie'][0] ?? null, 'session=abc; Path=/')
-    ->assert('second cookie', fn($r) => $r['headers']['set-cookie'][1] ?? null, 'theme=dark; Path=/')
-    ->start(null, $config);
+    ->assert('set-cookie is array', fn(CTGTestState $state) => is_array($state->getSubject()['headers']['set-cookie'] ?? null), CTGTestPredicates::isTrue())
+    ->assert('has two cookies', fn(CTGTestState $state) => count($state->getSubject()['headers']['set-cookie'] ?? []), CTGTestPredicates::equals(2))
+    ->assert('first cookie', fn(CTGTestState $state) => $state->getSubject()['headers']['set-cookie'][0] ?? null, CTGTestPredicates::equals('session=abc; Path=/'))
+    ->assert('second cookie', fn(CTGTestState $state) => $state->getSubject()['headers']['set-cookie'][1] ?? null, CTGTestPredicates::equals('theme=dark; Path=/'))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // REDIRECT POLICY
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('response — 3xx not followed, Location header present')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('response — 3xx not followed, Location header present')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/redirect.php"))
-    ->assert('status is 302', fn($r) => $r['status'], 302)
-    ->assert('ok is false', fn($r) => $r['ok'], false)
-    ->assert('location header present', fn($r) =>
-        isset($r['headers']['location']), true)
-    ->assert('location points to echo', fn($r) =>
-        $r['headers']['location'] ?? null, '/tests/endpoints/echo.php')
-    ->start(null, $config);
+    ->assert('status is 302', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(302))
+    ->assert('ok is false', fn(CTGTestState $state) => $state->getSubject()['ok'], CTGTestPredicates::isFalse())
+    ->assert('location header present', fn(CTGTestState $state) => isset($state->getSubject()['headers']['location']), CTGTestPredicates::isTrue())
+    ->assert('location points to echo', fn(CTGTestState $state) => $state->getSubject()['headers']['location'] ?? null, CTGTestPredicates::equals('/tests/endpoints/echo.php'))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // TRANSPORT ERROR DATA
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('transport error — data contains url and method')
-    ->stage('attempt', function($_) {
+$pipelines[] = CTGTest::init('transport error — data contains url and method')
+    ->stage('attempt', function(CTGTestState $state) {
         try {
             CTGAPIClient::init('http://localhost:19999')->GET('/nonexistent');
             return null;
@@ -822,18 +817,18 @@ CTGTest::init('transport error — data contains url and method')
             return $e->data;
         }
     })
-    ->assert('data has url', fn($r) => isset($r['url']), true)
-    ->assert('data has method', fn($r) => isset($r['method']), true)
-    ->assert('data has curl_errno', fn($r) => isset($r['curl_errno']), true)
-    ->assert('method is GET', fn($r) => $r['method'], 'GET')
-    ->start(null, $config);
+    ->assert('data has url', fn(CTGTestState $state) => isset($state->getSubject()['url']), CTGTestPredicates::isTrue())
+    ->assert('data has method', fn(CTGTestState $state) => isset($state->getSubject()['method']), CTGTestPredicates::isTrue())
+    ->assert('data has curl_errno', fn(CTGTestState $state) => isset($state->getSubject()['curl_errno']), CTGTestPredicates::isTrue())
+    ->assert('method is GET', fn(CTGTestState $state) => $state->getSubject()['method'], CTGTestPredicates::equals('GET'))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // ERROR DATA SAFETY
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('transport error — data does not contain auth or cookie headers')
-    ->stage('attempt', function($_) use ($baseUrl) {
+$pipelines[] = CTGTest::init('transport error — data does not contain auth or cookie headers')
+    ->stage('attempt', function(CTGTestState $state) use ($baseUrl){
         try {
             CTGAPIClient::init('http://localhost:19999')
                 ->setToken('secret-token-12345')
@@ -844,31 +839,31 @@ CTGTest::init('transport error — data does not contain auth or cookie headers'
             return $e->data;
         }
     })
-    ->assert('has url', fn($r) => isset($r['url']), true)
-    ->assert('has method', fn($r) => isset($r['method']), true)
-    ->assert('no authorization key', fn($r) => isset($r['authorization']), false)
-    ->assert('no cookie key', fn($r) => isset($r['cookie']), false)
-    ->assert('no headers key', fn($r) => isset($r['headers']), false)
-    ->assert('url does not contain token', fn($r) => str_contains($r['url'] ?? '', 'secret-token'), false)
-    ->start(null, $config);
+    ->assert('has url', fn(CTGTestState $state) => isset($state->getSubject()['url']), CTGTestPredicates::isTrue())
+    ->assert('has method', fn(CTGTestState $state) => isset($state->getSubject()['method']), CTGTestPredicates::isTrue())
+    ->assert('no authorization key', fn(CTGTestState $state) => isset($state->getSubject()['authorization']), CTGTestPredicates::isFalse())
+    ->assert('no cookie key', fn(CTGTestState $state) => isset($state->getSubject()['cookie']), CTGTestPredicates::isFalse())
+    ->assert('no headers key', fn(CTGTestState $state) => isset($state->getSubject()['headers']), CTGTestPredicates::isFalse())
+    ->assert('url does not contain token', fn(CTGTestState $state) => str_contains($state->getSubject()['url'] ?? '', 'secret-token'), CTGTestPredicates::isFalse())
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // USER-AGENT DEFAULT
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('request — default User-Agent header sent')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl)
+$pipelines[] = CTGTest::init('request — default User-Agent header sent')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl)
         ->GET("{$endpointBase}/echo.php"))
-    ->assert('User-Agent contains CTGAPIClient', fn($r) => str_contains(
-        $r['body']['headers']['User-Agent'] ?? '', 'CTGAPIClient'), true)
-    ->start(null, $config);
+    ->assert('User-Agent contains CTGAPIClient', fn(CTGTestState $state) => str_contains(
+        $state->getSubject()['body']['headers']['User-Agent'] ?? '', 'CTGAPIClient'), CTGTestPredicates::isTrue())
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // PROXY BEHAVIOR
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('request — HTTP_PROXY env not honored')
-    ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
+$pipelines[] = CTGTest::init('request — HTTP_PROXY env not honored')
+    ->stage('execute', function(CTGTestState $state) use ($baseUrl, $endpointBase){
         $old = getenv('HTTP_PROXY');
         putenv('HTTP_PROXY=http://invalid-proxy:9999');
         try {
@@ -879,11 +874,11 @@ CTGTest::init('request — HTTP_PROXY env not honored')
         }
         return $result;
     })
-    ->assert('request succeeded', fn($r) => $r['status'], 200)
-    ->start(null, $config);
+    ->assert('request succeeded', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ;
 
-CTGTest::init('request — HTTPS_PROXY env not honored')
-    ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
+$pipelines[] = CTGTest::init('request — HTTPS_PROXY env not honored')
+    ->stage('execute', function(CTGTestState $state) use ($baseUrl, $endpointBase){
         $old = getenv('HTTPS_PROXY');
         putenv('HTTPS_PROXY=http://invalid-proxy:9999');
         try {
@@ -894,11 +889,11 @@ CTGTest::init('request — HTTPS_PROXY env not honored')
         }
         return $result;
     })
-    ->assert('request succeeded', fn($r) => $r['status'], 200)
-    ->start(null, $config);
+    ->assert('request succeeded', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ;
 
-CTGTest::init('request — ALL_PROXY env not honored')
-    ->stage('execute', function($_) use ($baseUrl, $endpointBase) {
+$pipelines[] = CTGTest::init('request — ALL_PROXY env not honored')
+    ->stage('execute', function(CTGTestState $state) use ($baseUrl, $endpointBase){
         $old = getenv('ALL_PROXY');
         putenv('ALL_PROXY=http://invalid-proxy:9999');
         try {
@@ -909,15 +904,15 @@ CTGTest::init('request — ALL_PROXY env not honored')
         }
         return $result;
     })
-    ->assert('request succeeded', fn($r) => $r['status'], 200)
-    ->start(null, $config);
+    ->assert('request succeeded', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // SSRF ALLOWLIST
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('ssrf — disallowed host throws INVALID_URL')
-    ->stage('attempt', function($_) use ($baseUrl, $endpointBase) {
+$pipelines[] = CTGTest::init('ssrf — disallowed host throws INVALID_URL')
+    ->stage('attempt', function(CTGTestState $state) use ($baseUrl, $endpointBase){
         try {
             CTGAPIClient::init($baseUrl, [
                 'allowed_hosts' => ['api.example.com'],
@@ -927,11 +922,11 @@ CTGTest::init('ssrf — disallowed host throws INVALID_URL')
             return $e->type;
         }
     })
-    ->assert('throws INVALID_URL', fn($r) => $r, 'INVALID_URL')
-    ->start(null, $config);
+    ->assert('throws INVALID_URL', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('INVALID_URL'))
+    ;
 
-CTGTest::init('ssrf — disallowed scheme throws INVALID_URL')
-    ->stage('attempt', function($_) use ($endpointBase) {
+$pipelines[] = CTGTest::init('ssrf — disallowed scheme throws INVALID_URL')
+    ->stage('attempt', function(CTGTestState $state) use ($endpointBase){
         try {
             CTGAPIClient::init('http://localhost', [
                 'allowed_schemes' => ['https'],
@@ -941,22 +936,22 @@ CTGTest::init('ssrf — disallowed scheme throws INVALID_URL')
             return $e->type;
         }
     })
-    ->assert('throws INVALID_URL', fn($r) => $r, 'INVALID_URL')
-    ->start(null, $config);
+    ->assert('throws INVALID_URL', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('INVALID_URL'))
+    ;
 
-CTGTest::init('ssrf — allowed host succeeds')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl, [
+$pipelines[] = CTGTest::init('ssrf — allowed host succeeds')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl, [
         'allowed_hosts' => ['localhost'],
     ])->GET("{$endpointBase}/echo.php"))
-    ->assert('request succeeded', fn($r) => $r['status'], 200)
-    ->start(null, $config);
+    ->assert('request succeeded', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // MAX RESPONSE BYTES
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('response size — exceeds limit throws REQUEST_FAILED')
-    ->stage('attempt', function($_) use ($baseUrl, $endpointBase) {
+$pipelines[] = CTGTest::init('response size — exceeds limit throws REQUEST_FAILED')
+    ->stage('attempt', function(CTGTestState $state) use ($baseUrl, $endpointBase){
         try {
             CTGAPIClient::init($baseUrl, [
                 'max_response_bytes' => 1,
@@ -966,36 +961,38 @@ CTGTest::init('response size — exceeds limit throws REQUEST_FAILED')
             return $e->type;
         }
     })
-    ->assert('throws REQUEST_FAILED', fn($r) => $r, 'REQUEST_FAILED')
-    ->start(null, $config);
+    ->assert('throws REQUEST_FAILED', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals('REQUEST_FAILED'))
+    ;
 
-CTGTest::init('response size — under limit succeeds')
-    ->stage('execute', fn($_) => CTGAPIClient::init($baseUrl, [
+$pipelines[] = CTGTest::init('response size — under limit succeeds')
+    ->stage('execute', fn(CTGTestState $state) => CTGAPIClient::init($baseUrl, [
         'max_response_bytes' => 1048576,
     ])->GET("{$endpointBase}/echo.php"))
-    ->assert('request succeeded', fn($r) => $r['status'], 200)
-    ->start(null, $config);
+    ->assert('request succeeded', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
+    ;
 
 // ═══════════════════════════════════════════════════════════════
 // CTGFnprog INTEGRATION
 // ═══════════════════════════════════════════════════════════════
 
-CTGTest::init('CTGFnprog — pipe over response body')
-    ->stage('execute', fn($_) => CTGFnprog::pipe([
+$pipelines[] = CTGTest::init('CTGFnprog — pipe over response body')
+    ->stage('execute', fn(CTGTestState $state) => CTGFnprog::pipe([
         fn($_) => CTGAPIClient::init($baseUrl)->GET("{$endpointBase}/json.php"),
         fn($r) => $r['body']['users'],
         CTGFnprog::filter(fn($u) => $u['active']),
         CTGFnprog::sortBy('name'),
         CTGFnprog::pluck('name'),
     ])(null))
-    ->assert('returns active names sorted', fn($r) => $r, ['Alice', 'Bob'])
-    ->start(null, $config);
+    ->assert('returns active names sorted', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals(['Alice', 'Bob']))
+    ;
 
-CTGTest::init('CTGFnprog — pick fields from API response')
-    ->stage('execute', fn($_) => CTGFnprog::pipe([
+$pipelines[] = CTGTest::init('CTGFnprog — pick fields from API response')
+    ->stage('execute', fn(CTGTestState $state) => CTGFnprog::pipe([
         fn($_) => CTGAPIClient::init($baseUrl)->GET("{$endpointBase}/json.php"),
         fn($r) => $r['body']['users'],
         CTGFnprog::pick(['id', 'name']),
     ])(null))
-    ->assert('first has only id and name', fn($r) => array_keys($r[0]), ['id', 'name'])
-    ->start(null, $config);
+    ->assert('first has only id and name', fn(CTGTestState $state) => array_keys($state->getSubject()[0]), CTGTestPredicates::equals(['id', 'name']))
+    ;
+
+return $pipelines;
