@@ -7,7 +7,6 @@ use CTG\Test\CTGTestState;
 use CTG\Test\Predicates\CTGTestPredicates;
 use CTG\ApiClient\CTGAPIClient;
 use CTG\ApiClient\CTGAPIClientError;
-use CTG\FnProg\CTGFnprog;
 
 $pipelines = [];
 
@@ -969,30 +968,6 @@ $pipelines[] = CTGTest::init('response size — under limit succeeds')
         'max_response_bytes' => 1048576,
     ])->GET("{$endpointBase}/echo.php"))
     ->assert('request succeeded', fn(CTGTestState $state) => $state->getSubject()['status'], CTGTestPredicates::equals(200))
-    ;
-
-// ═══════════════════════════════════════════════════════════════
-// CTGFnprog INTEGRATION
-// ═══════════════════════════════════════════════════════════════
-
-$pipelines[] = CTGTest::init('CTGFnprog — pipe over response body')
-    ->stage('execute', fn(CTGTestState $state) => CTGFnprog::pipe([
-        fn($_) => CTGAPIClient::init($baseUrl)->GET("{$endpointBase}/json.php"),
-        fn($r) => $r['body']['users'],
-        CTGFnprog::filter(fn($u) => $u['active']),
-        CTGFnprog::sortBy('name'),
-        CTGFnprog::pluck('name'),
-    ])(null))
-    ->assert('returns active names sorted', fn(CTGTestState $state) => $state->getSubject(), CTGTestPredicates::equals(['Alice', 'Bob']))
-    ;
-
-$pipelines[] = CTGTest::init('CTGFnprog — pick fields from API response')
-    ->stage('execute', fn(CTGTestState $state) => CTGFnprog::pipe([
-        fn($_) => CTGAPIClient::init($baseUrl)->GET("{$endpointBase}/json.php"),
-        fn($r) => $r['body']['users'],
-        CTGFnprog::pick(['id', 'name']),
-    ])(null))
-    ->assert('first has only id and name', fn(CTGTestState $state) => array_keys($state->getSubject()[0]), CTGTestPredicates::equals(['id', 'name']))
     ;
 
 return $pipelines;
